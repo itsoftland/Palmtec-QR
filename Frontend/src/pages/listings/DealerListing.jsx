@@ -5,7 +5,7 @@ import statesDistricts from '../../assets/json/indiaStatesDistricts.json';
 import {
   Handshake, CheckCircle2, CircleDot, Search,
   Phone, MapPin, IdCard, ArrowLeft, AlertCircle,
-  Plus, Mail, KeyRound, User, Hash, Eye, Edit, X, RefreshCw, Info,
+  Plus, Mail, KeyRound, User, Hash, Eye, EyeOff, Edit, X, RefreshCw, Info,
 } from 'lucide-react';
 
 // ── ModalWrapper ───────────────────────────────────────────────────────────────
@@ -57,12 +57,12 @@ function SectionCard({ step, active = true, complete, title, subtitle, children 
   );
 }
 
-function Field({ label, required, hint, span, children }) {
+function Field({ label, required, hint, warnHint, span, children }) {
   return (
     <div className={span === 2 ? 'md:col-span-2' : ''}>
       <label className="block text-sm font-medium text-slate-700 mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-        {hint && <span className="ml-1 text-xs text-slate-400 font-normal">— {hint}</span>}
+        {hint && <span className={`ml-1 text-xs font-normal ${warnHint ? 'text-red-500' : 'text-slate-400'}`}>— {hint}</span>}
       </label>
       {children}
     </div>
@@ -217,6 +217,7 @@ export default function DealerListing() {
   // ── Create form state ────────────────────────────────────────────────────
   const [form, setForm] = useState(EMPTY);
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // ── Modal state (view / edit / sync) ─────────────────────────────────────
   const [modal, setModal] = useState(null);
@@ -257,7 +258,7 @@ export default function DealerListing() {
   const resetCreate = () => setForm(EMPTY);
 
   // ── Create form completeness ──────────────────────────────────────────────
-  const sec1 = !!(form.dealer_code && form.dealer_name && form.contact_person && form.contact_number && form.email && form.gst_number);
+  const sec1 = !!(form.dealer_code && form.dealer_name && form.contact_person && form.contact_number && form.email);
   const sec2 = !!(form.address && form.state && form.district);
   const sec3 = !!(form.user_username && form.user_email && form.user_password);
   const canSubmit = sec1 && sec2 && sec3;
@@ -271,7 +272,7 @@ export default function DealerListing() {
       const res = await api.post(`${BASE_URL}/create-dealer`, {
         dealer_name: form.dealer_name, email: form.email, dealer_code: form.dealer_code,
         contact_person: form.contact_person, contact_number: form.contact_number,
-        gst_number: form.gst_number, address: form.address,
+        gst_number: form.gst_number || '000000000000000', address: form.address,
         state: form.state, district: form.district,
         user_username: form.user_username, user_email: form.user_email, user_password: form.user_password,
       });
@@ -325,7 +326,8 @@ export default function DealerListing() {
     setModalForm(f =>
       name === 'state' ? { ...f, state: value, district: '' } :
         type === 'checkbox' ? { ...f, [name]: checked } :
-          { ...f, [name]: value }
+          name === 'contact_number' ? { ...f, [name]: value.replace(/\D/g, '').slice(0, 10) } :
+            { ...f, [name]: value }
     );
   };
 
@@ -462,9 +464,23 @@ export default function DealerListing() {
         <div className="flex items-center gap-3 mb-4">
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm max-w-sm w-full">
             <Search size={13} className="text-slate-400 shrink-0" />
-            <input
+            {/* <input
               value={search}
               onChange={e => setSearch(e.target.value)}
+              placeholder="Search by name, code or contact…"
+              className="flex-1 text-sm bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
+            /> */}
+            <input
+              value={search}
+              onChange={e => {
+                const value = e.target.value;
+
+                if (value.length <= 25) {
+                  setSearch(value);
+                }
+              }}
+              minLength={3}
+              maxLength={25}
               placeholder="Search by name, code or contact…"
               className="flex-1 text-sm bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
             />
@@ -802,7 +818,7 @@ export default function DealerListing() {
                 { label: 'Dealer Code', name: 'dealer_code', required: true },
                 { label: 'Dealer Name', name: 'dealer_name', required: true },
                 { label: 'Contact Person', name: 'contact_person', required: true },
-                { label: 'Contact Number', name: 'contact_number', required: true },
+                { label: 'Contact Number', name: 'contact_number', type: 'tel', required: true },
                 { label: 'Email', name: 'email', type: 'email', required: true },
                 { label: 'GST Number', name: 'gst_number', required: true },
               ].map(f => (
@@ -817,8 +833,10 @@ export default function DealerListing() {
                     value={modalForm[f.name] || ''}
                     onChange={handleModalInputChange}
                     required={f.required}
-                    minLength={3}
-                    maxLength={20}
+                    inputMode={f.name === 'contact_number' ? 'numeric' : undefined}
+                    pattern={f.name === 'contact_number' ? '[0-9]*' : undefined}
+                    minLength={f.name === 'contact_number' ? 10 : 3}
+                    maxLength={f.name === 'contact_number' ? 10 : 20}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                   />
                 </div>
@@ -1011,7 +1029,7 @@ export default function DealerListing() {
                     className={inputCls}
                   />
                 </Field>
-                <Field label="GST Number" required>
+                <Field label="GST Number">
                   {/* <input value={form.gst_number} onChange={e => set('gst_number', e.target.value)} placeholder="29ABCDE1234F1Z5" className={inputCls} /> */}
                   <input
                     type="text"
@@ -1124,13 +1142,13 @@ export default function DealerListing() {
                     />
                   </div>
                 </Field><br />
-                <Field label="Temporary Password" required hint="Min 8 chars">
+                <Field label="Temporary Password" required hint="Min 8 chars" warnHint={form.user_password.length > 0 && form.user_password.length < 8}>
                   <div className="flex gap-0">
                     <span className="inline-flex items-center px-3 text-sm text-slate-500 bg-slate-50 border border-r-0 border-slate-300 rounded-l-lg"><KeyRound size={13} /></span>
                     {/* <input type="text" value={form.user_password} onChange={e => set('user_password', e.target.value)} placeholder="—"
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                     <input
-                      type="text"
+                      type={showPassword ? 'text' : 'password'}
                       value={form.user_password}
                       onChange={e => {
                         const value = e.target.value;
@@ -1142,8 +1160,16 @@ export default function DealerListing() {
                       placeholder="—"
                       minLength={8}
                       maxLength={20}
-                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(p => !p)}
+                      tabIndex={-1}
+                      className="inline-flex items-center px-3 text-sm text-slate-500 bg-slate-50 border border-l-0 border-slate-300 rounded-r-lg hover:text-slate-700"
+                    >
+                      {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
                   </div>
                 </Field>
               </div>
