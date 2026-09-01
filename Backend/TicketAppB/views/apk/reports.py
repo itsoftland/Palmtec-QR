@@ -3,12 +3,19 @@ from rest_framework.response import Response
 from django.db.models import Q, Sum, Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from zoneinfo import ZoneInfo
 from ...models import TransactionData, TripData, ScheduleData, Stage, ExpenseData, Route, RouteStage, VehicleType, AggregatorTransaction,AggregatorPayoutCallback
 from ...permissions import LicensePermission
 from ..utils import _meets_tier, _TIER_ERROR
 
 PAYMENT_LABELS = {'Cash': 'Cash', 'UPI': 'UPI', 'Card': 'Card'}
+
+
+class AggregatorTransactionPagination(PageNumberPagination):
+    page_size = 5
+    page_size_query_param = 'page_size'
+    max_page_size = 500
 
 
 # GET /apk/buses
@@ -1121,11 +1128,14 @@ def aggregator_transaction_report(request):
     if to_date < from_date:
         return Response({'error': 'Cannot process: end_date cannot be earlier than start_date'}, status=400)
 
-    qs = AggregatorTransaction.objects.filter(
+    qs = AggregatorTransaction.objects.select_related('related_ticket').filter(
         company=user.company,
         transaction_date__gte=from_date,
         transaction_date__lte=to_date,
-    ).order_by('transaction_datetime')
+    ).order_by('-transaction_datetime')
+
+    paginator = AggregatorTransactionPagination()
+    page = paginator.paginate_queryset(qs, request)
 
     records = [
         {
@@ -1134,8 +1144,8 @@ def aggregator_transaction_report(request):
             'BQR Merchant ID': t.narration,
             'Ticket Date': t.transaction_date,
             'Ticket Time': t.transaction_time,
-            'Ticket Number': '',
-            'Palmtec ID': '',
+            'Ticket Number': t.related_ticket.ticket_number if t.related_ticket else '',
+            'Palmtec ID': t.related_ticket.palmtec_id if t.related_ticket else '',
             'Payer ID': (
                 t.transactionCardNumber[:3]
                 + 'x' * (len(t.transactionCardNumber) - 7)
@@ -1145,10 +1155,13 @@ def aggregator_transaction_report(request):
             ),
             'Transaction Amount': str(t.transactionAmount),
         }
-        for t in qs
+        for t in page
     ]
 
-    return Response({'start_date': from_date, 'end_date': to_date, 'data': records})
+    response = paginator.get_paginated_response(records)
+    response.data['start_date'] = from_date
+    response.data['end_date'] = to_date
+    return response
 
 
 
@@ -1176,6 +1189,9 @@ def payout_settlement_report_apk(request):
         payoutDate__lte=to_dt,
     ).order_by('-payoutDate')
 
+    paginator = AggregatorTransactionPagination()
+    page = paginator.paginate_queryset(payouts, request)
+
     records = [
         {
             'statementId': p.statementId,
@@ -1187,7 +1203,10 @@ def payout_settlement_report_apk(request):
             'payoutStatus': p.payoutStatus,
             'transaction_count': len(p.transactions),
         }
-        for p in payouts
+        for p in page
     ]
 
-    return Response({'start_date': from_date, 'end_date': to_date, 'data': records})
+    response = paginator.get_paginated_response(records)
+    response.data['start_date'] = from_date
+    response.data['end_date'] = to_date
+    return response
