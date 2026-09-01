@@ -625,7 +625,8 @@ export default function DealerListing() {
                           <button
                             type="button"
                             onClick={() => handleSyncDryRunRow(dealer)}
-                            disabled={syncingLicense[dealer.id]}
+                            disabled={syncingLicense[dealer.id] || dealer.authentication_status === 'Approve'}
+                            title={dealer.authentication_status === 'Approve' ? 'License is already approved' : undefined}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors cursor-pointer"
                           >
                             <RefreshCw size={11} />
@@ -815,7 +816,8 @@ export default function DealerListing() {
                     <button
                       type="button"
                       onClick={handleSyncDryRun}
-                      disabled={licenseAction.busy}
+                      disabled={licenseAction.busy || editingItem.authentication_status === 'Approve'}
+                      title={editingItem.authentication_status === 'Approve' ? 'License is already approved' : undefined}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors cursor-pointer"
                     >
                       <RefreshCw size={11} />
