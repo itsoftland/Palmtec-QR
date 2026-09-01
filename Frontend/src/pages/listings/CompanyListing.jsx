@@ -6,7 +6,7 @@ import {
   Building2, CheckCircle2, CircleDot, Search,
   Phone, MapPin, IdCard, ArrowLeft, AlertCircle,
   Download, Plus, Mail, KeyRound, User, Sparkles,
-  Eye, Edit, X, RefreshCw, Info,
+  Eye, EyeOff, Edit, X, RefreshCw, Info,
 } from 'lucide-react';
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -247,6 +247,7 @@ export default function CompanyListing() {
       : EMPTY
   );
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // ── Modal state (view / edit) ────────────────────────────────────────────
   const [modal, setModal] = useState(null);
@@ -486,6 +487,11 @@ export default function CompanyListing() {
 
   const handleModalInputChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'contact_number') {
+      const digits = value.replace(/\D/g, '').slice(0, 10);
+      setModalForm(f => ({ ...f, contact_number: digits }));
+      return;
+    }
     setModalForm(f => name === 'state' ? { ...f, state: value, district: '' } : { ...f, [name]: value });
   };
 
@@ -881,13 +887,14 @@ export default function CompanyListing() {
                     required={f.required}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                   <input
-                    type={f.type || 'text'}
+                    type={f.name === 'contact_number' ? 'tel' : (f.type || 'text')}
                     name={f.name}
                     value={modalForm[f.name] || ''}
                     onChange={handleModalInputChange}
                     required={f.required}
-                    minLength={3}
-                    maxLength={20}
+                    minLength={f.name === 'contact_number' ? 10 : 3}
+                    maxLength={f.name === 'contact_number' ? 10 : 20}
+                    pattern={f.name === 'contact_number' ? '[0-9]{10}' : undefined}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                   />
                 </div>
@@ -1316,20 +1323,30 @@ export default function CompanyListing() {
                       <span className="inline-flex items-center px-3 text-sm text-slate-500 bg-slate-50 border border-r-0 border-slate-300 rounded-l-lg"><KeyRound size={13} /></span>
                       {/* <input type="text" value={form.user_password} onChange={e => set('user_password', e.target.value)} placeholder="—"
                         className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
-                      <input
-                        type="password"
-                        value={form.user_password}
-                        onChange={(e) => {
-                          if (e.target.value.length <= 20) {
-                            set("user_password", e.target.value);
-                          }
-                        }}
-                        placeholder="Password"
-                        className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
-                        minLength={8}
-                        maxLength={20}
-                        required
-                      />
+                      <div className="relative flex-1 min-w-0">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={form.user_password}
+                          onChange={(e) => {
+                            if (e.target.value.length <= 20) {
+                              set("user_password", e.target.value);
+                            }
+                          }}
+                          placeholder="Password"
+                          className="w-full px-3 py-2 pr-9 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+                          minLength={8}
+                          maxLength={20}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(v => !v)}
+                          tabIndex={-1}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
                     </div>
                   </Field>
                 </div>

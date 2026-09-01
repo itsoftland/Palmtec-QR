@@ -211,6 +211,8 @@ export default function DealerListing() {
   const [search, setSearch] = useState('');
   const [togglingActive, setTogglingActive] = useState({});
   const [registeringLicense, setRegisteringLicense] = useState({});
+  const [validatingLicense, setValidatingLicense] = useState({});
+  const [syncingLicense, setSyncingLicense] = useState({});
 
   // ── Page view: 'list' | 'create' ────────────────────────────────────────
   const [pageView, setPageView] = useState('list');
@@ -319,6 +321,33 @@ export default function DealerListing() {
       window.alert(err?.response?.data?.error || 'Registration failed.');
     } finally {
       setRegisteringLicense(p => ({ ...p, [dealer.id]: false }));
+    }
+  };
+
+  const handleValidateLicenseRow = async (dealer) => {
+    setValidatingLicense(p => ({ ...p, [dealer.id]: true }));
+    try {
+      const res = await api.post(`${BASE_URL}/validate-dealer-license/${dealer.id}`);
+      window.alert(res.data.message || 'Validation started.');
+      fetchDealers();
+    } catch (err) {
+      window.alert(err?.response?.data?.error || 'Validation failed.');
+    } finally {
+      setValidatingLicense(p => ({ ...p, [dealer.id]: false }));
+    }
+  };
+
+  const handleSyncDryRunRow = async (dealer) => {
+    setSyncingLicense(p => ({ ...p, [dealer.id]: true }));
+    try {
+      const res = await api.post(`${BASE_URL}/sync-dealer-license/${dealer.id}`);
+      setSyncDiff(res.data.data);
+      setEditingItem(dealer);
+      setModal('sync');
+    } catch (err) {
+      window.alert(err?.response?.data?.error || 'Sync fetch failed.');
+    } finally {
+      setSyncingLicense(p => ({ ...p, [dealer.id]: false }));
     }
   };
 
@@ -568,15 +597,42 @@ export default function DealerListing() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => handleRegisterLicenseRow(dealer)}
-                        disabled={registeringLicense[dealer.id] || dealer.authentication_status === 'Approve'}
-                        title={dealer.authentication_status === 'Approve' ? 'Already licensed' : 'Register with License Server'}
-                        className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                      >
-                        {registeringLicense[dealer.id] ? 'Registering…' : 'Register'}
-                      </button>
+                      <div className="flex gap-2 flex-wrap">
+                        {/* Register — only before unique_identifier is set */}
+                        {!dealer.unique_identifier && (
+                          <button
+                            type="button"
+                            onClick={() => handleRegisterLicenseRow(dealer)}
+                            disabled={registeringLicense[dealer.id]}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            {registeringLicense[dealer.id] ? 'Processing…' : 'Register with License Server'}
+                          </button>
+                        )}
+                        {/* Authenticate — registered but not yet approved */}
+                        {dealer.unique_identifier && dealer.authentication_status !== 'Approve' && (
+                          <button
+                            type="button"
+                            onClick={() => handleValidateLicenseRow(dealer)}
+                            disabled={validatingLicense[dealer.id]}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            {validatingLicense[dealer.id] ? 'Processing…' : 'Authenticate License'}
+                          </button>
+                        )}
+                        {/* Sync — only when approved */}
+                        {dealer.authentication_status === 'Approve' && (
+                          <button
+                            type="button"
+                            onClick={() => handleSyncDryRunRow(dealer)}
+                            disabled={syncingLicense[dealer.id]}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors cursor-pointer"
+                          >
+                            <RefreshCw size={11} />
+                            {syncingLicense[dealer.id] ? 'Fetching…' : 'Sync License'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <button
