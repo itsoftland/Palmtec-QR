@@ -210,6 +210,7 @@ export default function DealerListing() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [togglingActive, setTogglingActive] = useState({});
+  const [registeringLicense, setRegisteringLicense] = useState({});
 
   // ── Page view: 'list' | 'create' ────────────────────────────────────────
   const [pageView, setPageView] = useState('list');
@@ -306,6 +307,19 @@ export default function DealerListing() {
       setDealers(list => list.map(d => d.id === dealer.id ? { ...d, is_active: dealer.is_active } : d));
       window.alert(err.response?.data?.message || err.response?.data?.error || 'Failed to update status.');
     } finally { setTogglingActive(p => ({ ...p, [dealer.id]: false })); }
+  };
+
+  const handleRegisterLicenseRow = async (dealer) => {
+    setRegisteringLicense(p => ({ ...p, [dealer.id]: true }));
+    try {
+      const res = await api.post(`${BASE_URL}/register-dealer-license/${dealer.id}`);
+      window.alert(res.data.message || 'Registered.');
+      fetchDealers();
+    } catch (err) {
+      window.alert(err?.response?.data?.error || 'Registration failed.');
+    } finally {
+      setRegisteringLicense(p => ({ ...p, [dealer.id]: false }));
+    }
   };
 
   // ── Edit / View modal ────────────────────────────────────────────────────
@@ -500,16 +514,17 @@ export default function DealerListing() {
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">License</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Register</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Access</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <TableSkeleton columns={['w-40', 'w-28', 'w-32', 'w-16', 'w-16', 'w-16']} />
+                  <TableSkeleton columns={['w-40', 'w-28', 'w-32', 'w-16', 'w-16', 'w-16', 'w-16']} />
                 ) : filteredDealers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-10 text-center">
+                    <td colSpan="7" className="px-4 py-10 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Handshake size={20} className="text-slate-300" />
                         <p className="text-sm text-slate-400">{search ? 'No dealers match your search' : 'No dealers found'}</p>
@@ -551,6 +566,17 @@ export default function DealerListing() {
                       ) : (
                         <span className="text-xs text-slate-400">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRegisterLicenseRow(dealer)}
+                        disabled={registeringLicense[dealer.id] || dealer.authentication_status === 'Approve'}
+                        title={dealer.authentication_status === 'Approve' ? 'Already licensed' : 'Register with License Server'}
+                        className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-[11px] font-medium hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                      >
+                        {registeringLicense[dealer.id] ? 'Registering…' : 'Register'}
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       <button
