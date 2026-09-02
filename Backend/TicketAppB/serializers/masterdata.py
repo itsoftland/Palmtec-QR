@@ -34,6 +34,21 @@ class EmployeeTypeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'company', 'created_by', 'updated_by', 'created_at', 'updated_at']
 
+    def validate_emp_type_name(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Employee type name is required.')
+
+        company = self.context.get('company')
+        if company:
+            qs = EmployeeType.objects.filter(company=company, emp_type_name__iexact=value)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError('Employee type with this name already exists.')
+
+        return value
+
 
 class StageSerializer(serializers.ModelSerializer):
     company    = serializers.PrimaryKeyRelatedField(read_only=True)

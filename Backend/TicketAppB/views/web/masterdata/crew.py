@@ -121,7 +121,7 @@ def get_employee_types(request):
 def create_employee_type(request):
     user, company = _get_authenticated_company_admin(request)
 
-    serializer = EmployeeTypeSerializer(data=request.data)
+    serializer = EmployeeTypeSerializer(data=request.data, context={'company': company})
     if serializer.is_valid():
         serializer.save(company=company, created_by=user)
         return Response({'message': 'Employee type created successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
@@ -137,7 +137,7 @@ def update_employee_type(request, pk):
     if err:
         return err
 
-    serializer = EmployeeTypeSerializer(obj, data=request.data, partial=True)
+    serializer = EmployeeTypeSerializer(obj, data=request.data, partial=True, context={'company': company})
     if serializer.is_valid():
         serializer.save(updated_by=user)
         return Response({'message': 'Employee type updated successfully', 'data': serializer.data}, status=status.HTTP_200_OK)
