@@ -401,20 +401,52 @@ export default function RouteListing() {
     setWizardStep(0);
   };
 
+  // const handleWizardChange = (e) => {
+  //   const { name, value, type, checked } = e.target;
+  //   let processedValue = type === 'checkbox' ? checked : value;
+  //   if (name === 'route_code') {
+  //     processedValue = value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
+  //   } else if (name === 'route_name') {
+  //     processedValue = value.replace(/[^a-zA-Z0-9\-\/\(\) ]/g, '').slice(0, 14);
+  //   } else if (name === 'no_of_stages') {
+  //     processedValue = value.replace(/[^0-9]/g, '').slice(0, 2);
+  //   } else if (name === 'min_fare') {
+  //     processedValue = value.replace(/[^0-9]/g, '').slice(0, 4);
+  //   }
+  //   setWizardData(prev => ({ ...prev, [name]: processedValue }));
+  // };
+
   const handleWizardChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    let processedValue = type === 'checkbox' ? checked : value;
-    if (name === 'route_code') {
-      processedValue = value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
-    } else if (name === 'route_name') {
-      processedValue = value.replace(/[^a-zA-Z0-9\-\/\(\) ]/g, '').slice(0, 14);
-    } else if (name === 'no_of_stages') {
-      processedValue = value.replace(/[^0-9]/g, '').slice(0, 2);
-    } else if (name === 'min_fare') {
-      processedValue = value.replace(/[^0-9]/g, '').slice(0, 4);
+
+  const { name, value, type, checked } = e.target;
+
+  let processedValue = type === 'checkbox' ? checked : value;
+
+  if (name === 'route_code') {
+
+    processedValue = value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4);
+
+  } else if (name === 'route_name') {
+
+    processedValue = value.replace(/[^a-zA-Z0-9\-\/\(\) ]/g, '').slice(0, 14);
+
+  } else if (name === 'no_of_stages') {
+
+    processedValue = value.replace(/[^0-9]/g, '');
+
+    if (processedValue !== '' && Number(processedValue) > 150) {
+      processedValue = '150';
     }
-    setWizardData(prev => ({ ...prev, [name]: processedValue }));
-  };
+
+  } else if (name === 'min_fare') {
+
+    processedValue = value.replace(/[^0-9]/g, '').slice(0, 4);
+
+  }
+
+  setWizardData(prev => ({ ...prev, [name]: processedValue }));
+
+};
 
   const toggleWizardDepot = (depotId) => {
     setWizardData(prev => {
@@ -961,9 +993,23 @@ export default function RouteListing() {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-700">No of Stages * <span className="text-slate-400 font-normal">(max 99)</span></label>
-                    <input type="text" inputMode="numeric" name="no_of_stages" value={wizardData.no_of_stages} onChange={handleWizardChange}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                    <label className="text-sm font-medium text-slate-700">No of Stages * <span className="text-slate-400 font-normal">(max 150)</span></label>
+                    {/* <input type="text" inputMode="numeric" name="no_of_stages" value={wizardData.no_of_stages} onChange={handleWizardChange}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500" /> */}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      name="no_of_stages"
+                      value={wizardData.no_of_stages}
+                      onChange={(e) => {
+                        const value = e.target.value;
+
+                        if (value === "" || (/^\d+$/.test(value) && Number(value) <= 150)) {
+                          handleWizardChange(e);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-slate-700">Min Fare (₹) * <span className="text-slate-400 font-normal">(max 9999)</span></label>
