@@ -894,7 +894,7 @@ export default function CompanyListing() {
                     onChange={handleModalInputChange}
                     required={f.required}
                     minLength={f.name === 'contact_number' ? 10 : 3}
-                    maxLength={f.name === 'contact_number' ? 10 : 20}
+                    maxLength={f.name === 'contact_number' ? 10 : f.name === 'company_email' ? 75 : 20}
                     pattern={f.name === 'contact_number' ? '[0-9]{10}' : undefined}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                   />
@@ -1319,7 +1319,7 @@ export default function CompanyListing() {
                       />
                     </div>
                   </Field>
-                  <Field label="Temporary Password" required hint="Min 8 chars">
+                  <Field label="Password" required hint="Min 8 chars">
                     <div className="flex gap-0">
                       <span className="inline-flex items-center px-3 text-sm text-slate-500 bg-slate-50 border border-r-0 border-slate-300 rounded-l-lg"><KeyRound size={13} /></span>
                       {/* <input type="text" value={form.user_password} onChange={e => set('user_password', e.target.value)} placeholder="—"

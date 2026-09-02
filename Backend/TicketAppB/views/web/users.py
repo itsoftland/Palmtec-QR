@@ -641,6 +641,9 @@ def change_user_password(request, user_id):
     except User.DoesNotExist:
         return Response({'error': f'User {user_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    if target.check_password(new_password):
+        return Response({'error': 'New password must be different from the old password.'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         target.set_password(new_password)
         target.save()

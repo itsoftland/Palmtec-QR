@@ -199,6 +199,7 @@ export default function UserListing() {
   const [pw, setPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   const navigate = useNavigate();
 
@@ -587,6 +588,7 @@ export default function UserListing() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80">
+                <Th>User ID</Th>
                 <Th onClick={() => toggleSort('username')}>User <SortIcon field="username" /></Th>
                 <Th onClick={() => toggleSort('role')}>Role</Th>
                 <Th>Company</Th>
@@ -600,7 +602,7 @@ export default function UserListing() {
               {loading ? (
                 [...Array(6)].map((_, i) => (
                   <tr key={i}>
-                    {[...Array(7)].map((_, j) => (
+                    {[...Array(8)].map((_, j) => (
                       <td key={j} className="px-4 py-3.5">
                         <div className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: j === 0 ? '160px' : '80px' }} />
                       </td>
@@ -609,7 +611,7 @@ export default function UserListing() {
                 ))
               ) : paged.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center">
+                  <td colSpan={8} className="px-4 py-10 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Users size={20} className="text-slate-300" />
                       <p className="text-sm text-slate-400">No users match your filters</p>
@@ -618,6 +620,10 @@ export default function UserListing() {
                 </tr>
               ) : paged.map(user => (
                 <tr key={user.id} className="group hover:bg-slate-50/60 transition-colors">
+                  {/* User ID */}
+                  <td className="px-4 py-3">
+                    <span className="text-[12px] text-slate-600">{user.id ?? '—'}</span>
+                  </td>
                   {/* User */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
@@ -669,15 +675,15 @@ export default function UserListing() {
                   </td>
                   {/* Actions */}
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openView(user)} className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer" title="View details">
+                    <div className="flex items-center justify-end gap-0.5">
+                      <button onClick={() => openView(user)} className="p-1.5 rounded-md text-slate-400 cursor-pointer" title="View details">
                         <Eye size={14} />
                       </button>
-                      <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer" title="Edit user">
+                      <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-slate-400 cursor-pointer" title="Edit user">
                         <Edit size={14} />
                       </button>
                       {isSuperadmin && (
-                        <button onClick={() => openPw(user)} className="p-1.5 rounded-md text-slate-400 hover:text-violet-600 hover:bg-violet-50 cursor-pointer" title="Change password">
+                        <button onClick={() => openPw(user)} className="p-1.5 rounded-md text-slate-400 cursor-pointer" title="Change password">
                           <KeyRound size={14} />
                         </button>
                       )}
@@ -973,17 +979,26 @@ export default function UserListing() {
                 placeholder="Temporary password"
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
               /> */}
-              <input
-                type="text"
-                name="password"
-                value={formData.password}
-                onChange={handleInputChange}
-                required
-                minLength={8}
-                maxLength={20}
-                placeholder="Temporary password"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
-              />
+              <div className="relative">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  required
+                  minLength={8}
+                  maxLength={20}
+                  placeholder="Temporary password"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <Eye size={14} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -1041,14 +1056,6 @@ export default function UserListing() {
                 <p className="text-xs text-rose-600">Must be at least 8 characters</p>
               )}
               <div className="relative">
-                {/* <input
-                  type={showPw ? 'text' : 'password'}
-                  value={pw}
-                  onChange={e => setPw(e.target.value)}
-                  placeholder="Enter new password"
-                  required
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                /> */}
                 <input
                   type={showPw ? 'text' : 'password'}
                   value={pw}
@@ -1076,24 +1083,25 @@ export default function UserListing() {
               {confirmPw && pw !== confirmPw && (
                 <p className="text-xs text-rose-600">Passwords do not match</p>
               )}
-              {/* <input
-                type={showPw ? 'text' : 'password'}
-                value={confirmPw}
-                onChange={e => setConfirmPw(e.target.value)}
-                placeholder="Re-enter password"
-                required
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
-              /> */}
-              <input
-                type={showPw ? 'text' : 'password'}
-                value={confirmPw}
-                onChange={e => setConfirmPw(e.target.value)}
-                placeholder="Re-enter password"
-                required
-                minLength={8}
-                maxLength={20}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
-              />
+              <div className="relative">
+                <input
+                  type={showConfirmPw ? 'text' : 'password'}
+                  value={confirmPw}
+                  onChange={e => setConfirmPw(e.target.value)}
+                  placeholder="Re-enter password"
+                  required
+                  minLength={8}
+                  maxLength={20}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <Eye size={14} />
+                </button>
+              </div>
             </div>
 
             {pw && confirmPw && pw === confirmPw && pw.length >= 6 && (
