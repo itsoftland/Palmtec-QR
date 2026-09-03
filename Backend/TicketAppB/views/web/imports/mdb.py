@@ -963,15 +963,16 @@ class MdbImportService:
                         f"Available: {list(lookups['bus_types'].keys())}"
                     )
 
-                _, created = VehicleType.objects.get_or_create(
-                    company=company,
-                    bus_reg_num=bus_no,
-                    defaults={'bus_type': bus_type_obj, 'created_by': user}
-                )
-                if created:
-                    imported += 1
-                else:
+                if VehicleType.objects.filter(bus_reg_num=bus_no).exists():
                     existing += 1
+                else:
+                    VehicleType.objects.create(
+                        company=company,
+                        bus_reg_num=bus_no,
+                        bus_type=bus_type_obj,
+                        created_by=user
+                    )
+                    imported += 1
             except Exception as e:
                 skipped += 1
                 errors.append(f"Row {i+1} VEHICLETYPE: {str(e)}")
