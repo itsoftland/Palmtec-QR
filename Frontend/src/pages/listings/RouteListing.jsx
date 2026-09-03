@@ -511,10 +511,26 @@ export default function RouteListing() {
     });
   };
 
+  const stageDistanceError = (distanceStr) => {
+    const dist = parseFloat(distanceStr || '0');
+    if (wizardData.stages.length === 0) {
+      if (dist !== 0) return 'First stage distance must be 0 km.';
+    } else {
+      const prev = parseFloat(wizardData.stages[wizardData.stages.length - 1].distance || '0');
+      if (!(dist > prev)) return `Distance must be greater than previous stage (${prev} km).`;
+    }
+    return null;
+  };
+
   const saveStageEntry = () => {
     const name = stageInput.stage_name.trim();
     if (!name) {
       window.alert('Stage name is required.');
+      return;
+    }
+    const distanceError = stageDistanceError(stageInput.distance);
+    if (distanceError) {
+      window.alert(distanceError);
       return;
     }
     const pendingCodes = wizardData.stages.map(s => s.stage_code);
@@ -656,6 +672,24 @@ export default function RouteListing() {
   const stagesEntered = wizardData.stages.length;
   const allStagesDone = stagesEntered === n && n > 0;
   const fareTypeLabel = wizardData.fare_type === '1' ? 'TABLE' : 'GRAPH';
+
+  const wizardMinFare = parseFloat(wizardData.min_fare) || 0;
+  const fareValid = wizardData.fare_type === '1'
+    ? wizardData.fare_list.every((f, idx) => {
+        if (idx === 0) return true;
+        const v = parseFloat(f) || 0;
+        return v > 0 && v >= wizardMinFare;
+      })
+    : wizardData.fare_matrix.every(row => row.every(f => { const v = parseFloat(f) || 0; return v > 0 && v >= wizardMinFare; }));
+
+  const formMinFare = parseFloat(formData.min_fare) || 0;
+  const formFareValid = parseInt(formData.fare_type) === 1
+    ? fareList.every((f, idx) => {
+        if (idx === 0) return true;
+        const v = parseFloat(f) || 0;
+        return v > 0 && v >= formMinFare;
+      })
+    : fareMatrix.every(row => row.every(f => { const v = parseFloat(f) || 0; return v > 0 && v >= formMinFare; }));
 
   // ── Section 12: Render ────────────────────────────────────────────────────
   return (
@@ -1106,9 +1140,10 @@ export default function RouteListing() {
                               <td className="px-4 py-3">
                                 <input
                                   type="number"
-                                  value={fare}
+                                  value={idx === 0 ? 0 : fare}
                                   min="0"
                                   max="999"
+                                  disabled={idx === 0}
                                   onChange={e => {
                                     let val = parseInt(e.target.value, 10);
 
@@ -1138,7 +1173,7 @@ export default function RouteListing() {
                                       window.alert(`Minimum Fare is ${minF}`);
                                     }
                                   }}
-                                  className="w-40 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:outline-none text-sm"
+                                  className="w-40 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:outline-none text-sm disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                                 />
                               </td>
                             </tr>
@@ -1314,8 +1349,14 @@ export default function RouteListing() {
                           }}
                           onKeyDown={e => { if (e.key === 'Enter') saveStageEntry(); }}
                           placeholder="0"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 bg-white"
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white ${stageDistanceError(stageInput.distance)
+                            ? 'border-red-400 focus:ring-red-300'
+                            : 'border-slate-300 focus:ring-slate-500'
+                            }`}
                         />
+                        {stageDistanceError(stageInput.distance) && (
+                          <p className="text-xs text-red-600">{stageDistanceError(stageInput.distance)}</p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-sm font-medium text-slate-700">Stage Code</label>
@@ -1335,7 +1376,7 @@ export default function RouteListing() {
                           <p className="text-xs text-red-600">Code already in use.</p>
                         )}
                       </div>
-                      <button type="button" onClick={saveStageEntry} disabled={stagesEntered >= n}
+                      <button type="button" onClick={saveStageEntry} disabled={stagesEntered >= n || !!stageDistanceError(stageInput.distance)}
                         className="w-full py-2 bg-slate-900 hover:bg-slate-700 text-white font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                         Save
                       </button>
@@ -1401,13 +1442,13 @@ export default function RouteListing() {
                   </button>
                 )}
                 {wizardStep === 2 && (
-                  <button type="button" onClick={goToStep3}
-                    className="px-6 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-700 rounded-lg shadow transition-colors">
+                  <button type="button" onClick={goToStep3} disabled={!fareValid}
+                    className="px-6 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-700 rounded-lg shadow disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                     Next: Stage Names →
                   </button>
                 )}
                 {wizardStep === 3 && (
-                  <button type="button" onClick={submitWizard} disabled={!allStagesDone || wizardSubmitting}
+                  <button type="button" onClick={submitWizard} disabled={!allStagesDone || !fareValid || wizardSubmitting}
                     className="px-8 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                     {wizardSubmitting ? 'Creating Route...' : 'Finish'}
                   </button>
@@ -2078,7 +2119,7 @@ export default function RouteListing() {
                 {isReadOnly ? 'Close' : 'Cancel'}
               </button>
               {!isReadOnly && (
-                <button type="button" onClick={handleSubmit} disabled={submitting}
+                <button type="button" onClick={handleSubmit} disabled={submitting || !formFareValid}
                   className="px-6 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-700 rounded-lg shadow transition-colors disabled:opacity-50">
                   {submitting ? 'Saving...' : 'Update Route'}
                 </button>
