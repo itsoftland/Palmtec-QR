@@ -192,13 +192,13 @@ export default function VehicleCombined() {
   const getTypeModalTitle = () => ({ view: 'Bus Type Details', edit: 'Edit Bus Type', create: 'Create Bus Type' }[typeModalMode]);
 
   // ── Vehicle CRUD ──────────────────────────────────────────────────────────────
-  const handleVehSubmit = () => submitForm({
+  const handleVehSubmit = (e) => { e.preventDefault(); return submitForm({
     modalMode, editingItem, formData,
     createUrl: `${BASE_URL}/masterdata/vehicles/create`,
     updateUrl: `${BASE_URL}/masterdata/vehicles/update/${editingItem?.id}`,
     setSubmitting,
     onSuccess: () => { setIsModalOpen(false); setFormData(emptyVehicleForm); fetchVehicles(); },
-  });
+  }); };
 
   const getVehModalTitle = () => ({ view: 'Vehicle Details', edit: 'Edit Vehicle', create: 'Register Vehicle' }[modalMode]);
   const selectedTypeName = busTypes.find(t => t.id === selectedType)?.name || '';
@@ -690,13 +690,9 @@ export default function VehicleCombined() {
                 {getVehModalTitle()}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-2">
+            <form className="space-y-4 mt-2" onSubmit={handleVehSubmit}>
               <div className="space-y-1.5">
                 <Label className="text-slate-700">Registration Number *</Label>
-                {/* <Input name="bus_reg_num" value={formData.bus_reg_num}
-                onChange={handleInputChange} readOnly={isReadOnly}
-                placeholder="e.g. KA-01-AB-1234"
-                className={`uppercase ${isReadOnly ? 'bg-slate-50 text-slate-600' : ''}`} /> */}
                 <Input
                   name="bus_reg_num"
                   value={formData.bus_reg_num}
@@ -705,6 +701,7 @@ export default function VehicleCombined() {
                   placeholder="e.g. KA-01-AB-1234"
                   minLength={5}
                   maxLength={18}
+                  required={!isReadOnly}
                   className={`uppercase ${isReadOnly ? 'bg-slate-50 text-slate-600' : ''}`}
                 />
               </div>
@@ -713,7 +710,7 @@ export default function VehicleCombined() {
                 {isReadOnly ? (
                   <Input value={formData.bus_type_name || '—'} readOnly className="bg-slate-50 text-slate-600" />
                 ) : (
-                  <select name="bus_type" value={formData.bus_type} onChange={handleInputChange}
+                  <select name="bus_type" value={formData.bus_type} onChange={handleInputChange} required
                     className="w-full h-10 px-3 border border-input rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-slate-900">
                     <option value="">-- Select Bus Type --</option>
                     {activeBusTypes.map(bt => (
@@ -731,16 +728,16 @@ export default function VehicleCombined() {
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button variant="outline" onClick={() => setIsModalOpen(false)} className="text-slate-600">
+                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="text-slate-600">
                   {isReadOnly ? 'Close' : 'Cancel'}
                 </Button>
                 {!isReadOnly && (
-                  <Button onClick={handleVehSubmit} disabled={submitting} className="bg-slate-900 hover:bg-slate-700 text-white">
+                  <Button type="submit" disabled={submitting} className="bg-slate-900 hover:bg-slate-700 text-white">
                     {submitting ? 'Saving...' : modalMode === 'edit' ? 'Update' : 'Save'}
                   </Button>
                 )}
               </div>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
 

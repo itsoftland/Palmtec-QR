@@ -15,6 +15,7 @@ export default function DepotListing() {
   const [modalMode, setModalMode]   = useState('view'); // 'view' | 'edit' | 'create'
   const [selected, setSelected]     = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError]   = useState('');
 
   const emptyForm = { depot_code: '', depot_name: '', address: '' };
   const [form, setForm] = useState(emptyForm);
@@ -56,6 +57,7 @@ export default function DepotListing() {
   const openEdit = (d) => {
     setSelected(d);
     setForm({ depot_code: d.depot_code, depot_name: d.depot_name, address: d.address });
+    setFormError('');
     setModalMode('edit');
     setModalOpen(true);
   };
@@ -63,23 +65,25 @@ export default function DepotListing() {
   const openCreate = () => {
     setSelected(null);
     setForm(emptyForm);
+    setFormError('');
     setModalMode('create');
     setModalOpen(true);
   };
 
-  const closeModal = () => { setModalOpen(false); setSelected(null); };
+  const closeModal = () => { setModalOpen(false); setSelected(null); setFormError(''); };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
     if (modalMode !== 'edit' && form.depot_code.trim().length < 3) {
-      return window.alert('Depot Code must be at least 3 characters.');
+      return setFormError('Depot Code must be at least 3 characters.');
     }
     if (form.depot_name.trim().length < 3) {
-      return window.alert('Depot Name must be at least 3 characters.');
+      return setFormError('Depot Name must be at least 3 characters.');
     }
     if (form.address.trim().length < 3) {
-      return window.alert('Address must be at least 3 characters.');
+      return setFormError('Address must be at least 3 characters.');
     }
     setSubmitting(true);
     try {
@@ -90,14 +94,13 @@ export default function DepotListing() {
         res = await api.post(`${BASE_URL}/create-depot`, form);
       }
       if (res?.status === 200 || res?.status === 201) {
-        window.alert(res.data.message || 'Success');
         closeModal();
         fetchDepots();
       }
     } catch (err) {
-      if (!err.response) return window.alert('Server unreachable. Try later.');
+      if (!err.response) return setFormError('Server unreachable. Try later.');
       const { data } = err.response;
-      window.alert((data.errors ? Object.values(data.errors)[0][0] : data.message) || 'Validation failed');
+      setFormError((data.errors ? Object.values(data.errors)[0][0] : data.message) || 'Validation failed');
     } finally {
       setSubmitting(false);
     }
@@ -276,17 +279,22 @@ export default function DepotListing() {
         ) : (
           /* Create / Edit form */
           <form className="space-y-4" onSubmit={handleSubmit}>
+            {formError && (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2.5 text-xs text-rose-700">
+                {formError}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <FormField label="Depot Code" required>
-                <DesignInput value={form.depot_code} onChange={v => v.length <= 20 && setF('depot_code', v)} placeholder="e.g. NTC-ANP"  />
+                <DesignInput value={form.depot_code} onChange={v => v.length <= 20 && setF('depot_code', v)} placeholder="e.g. NTC-ANP" required />
               </FormField>
               <FormField label="Depot Name" required>
-                <DesignInput value={form.depot_name} onChange={v => v.length <= 20 && setF('depot_name', v)} placeholder="e.g. Anantapur Central Depot" />
+                <DesignInput value={form.depot_name} onChange={v => v.length <= 20 && setF('depot_name', v)} placeholder="e.g. Anantapur Central Depot" required />
               </FormField>
             </div>
 
             <FormField label="Address" required>
-              <DesignTextarea value={form.address} onChange={v => v.length <= 400 && setF('address', v)} placeholder="Full depot address" rows={2} />
+              <DesignTextarea value={form.address} onChange={v => v.length <= 400 && setF('address', v)} placeholder="Full depot address" rows={2} required />
             </FormField>
 
             {modalMode === 'create' && (

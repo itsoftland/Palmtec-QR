@@ -57,7 +57,8 @@ export default function CurrencyListing() {
   const closeModal = ()  => { setModalOpen(false); setErrors({}); };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     const nextErrors = {};
     if (form.currency.trim().length !== 3) {
       nextErrors.currency = 'Currency code must be 3 letters.';
@@ -216,24 +217,25 @@ export default function CurrencyListing() {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <FormField label="Currency Code" required hint="3-letter ISO code (e.g. INR, USD)" error={errors.currency}>
               <DesignInput
                 value={form.currency}
                 onChange={v => setForm(f => ({ ...f, currency: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) }))}
                 placeholder="e.g. INR"
+                required
               />
             </FormField>
             <FormField label="Country" required error={errors.country}>
-              <DesignInput value={form.country} onChange={v => setForm(f => ({ ...f, country: v.replace(/[^A-Za-z\s]/g, '').slice(0, 20) }))} placeholder="e.g. India" />
+              <DesignInput value={form.country} onChange={v => setForm(f => ({ ...f, country: v.replace(/[^A-Za-z\s]/g, '').slice(0, 20) }))} placeholder="e.g. India" required />
             </FormField>
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-              <Btn variant="secondary" onClick={closeModal}>Cancel</Btn>
-              <Btn onClick={handleSubmit} disabled={submitting}>
+              <Btn variant="secondary" type="button" onClick={closeModal}>Cancel</Btn>
+              <Btn type="submit" disabled={submitting}>
                 {submitting ? 'Saving…' : modalMode === 'edit' ? 'Update' : 'Save'}
               </Btn>
             </div>
-          </div>
+          </form>
         )}
       </DesignModal>
     </div>

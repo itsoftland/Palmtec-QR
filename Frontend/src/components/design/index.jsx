@@ -233,7 +233,7 @@ export function FormField({ label, required, hint, error, children, span = 1 }) 
   );
 }
 
-export function DesignInput({ value, onChange, type = 'text', placeholder, disabled, prefix, suffix, readOnly, name }) {
+export function DesignInput({ value, onChange, type = 'text', placeholder, disabled, prefix, suffix, readOnly, name, required }) {
   return (
     <div className={`flex items-center rounded-lg border border-slate-300 bg-white transition-all focus-within:ring-2 focus-within:ring-slate-400 focus-within:border-slate-400 ${disabled || readOnly ? 'bg-slate-50' : ''}`}>
       {prefix && <span className="pl-3 text-slate-400 text-sm">{prefix}</span>}
@@ -245,6 +245,7 @@ export function DesignInput({ value, onChange, type = 'text', placeholder, disab
         placeholder={placeholder}
         disabled={disabled}
         readOnly={readOnly}
+        required={required}
         className="flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed"
       />
       {suffix && <span className="pr-3 text-slate-400 text-xs">{suffix}</span>}
@@ -254,7 +255,7 @@ export function DesignInput({ value, onChange, type = 'text', placeholder, disab
 
 
 
-export function DesignTextarea({ value, onChange, placeholder, rows = 3, readOnly, name }) {
+export function DesignTextarea({ value, onChange, placeholder, rows = 3, readOnly, name, required }) {
   return (
     <textarea
       name={name}
@@ -263,6 +264,7 @@ export function DesignTextarea({ value, onChange, placeholder, rows = 3, readOnl
       placeholder={placeholder}
       rows={rows}
       readOnly={readOnly}
+      required={required}
       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 read-only:bg-slate-50 resize-none"
     />
   );

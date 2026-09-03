@@ -187,13 +187,13 @@ export default function EmployeeCombined() {
   const getTypeModalTitle = () => ({ view: 'Employee Type Details', edit: 'Edit Employee Type', create: 'Create Employee Type' }[typeModalMode]);
 
   // ── Employee CRUD ─────────────────────────────────────────────────────────────
-  const handleEmpSubmit = () => submitForm({
+  const handleEmpSubmit = (e) => { e.preventDefault(); return submitForm({
     modalMode, editingItem, formData,
     createUrl: `${BASE_URL}/masterdata/employees/create`,
     updateUrl: `${BASE_URL}/masterdata/employees/update/${editingItem?.id}`,
     setSubmitting,
     onSuccess: () => { setIsModalOpen(false); setFormData(emptyEmpForm); fetchEmployees(); },
-  });
+  }); };
 
   const getEmpModalTitle = () => ({ view: 'Employee Details', edit: 'Edit Employee', create: 'Create Employee' }[modalMode]);
   const selectedTypeName = empTypes.find(t => t.id === selectedType)?.emp_type_name || '';
@@ -637,12 +637,10 @@ export default function EmployeeCombined() {
                 {getEmpModalTitle()}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-2">
+            <form className="space-y-4 mt-2" onSubmit={handleEmpSubmit}>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-slate-700">Employee Code *</Label>
-                  {/* <Input name="employee_code" value={formData.employee_code} onChange={handleInputChange} readOnly={isReadOnly}
-                  placeholder="e.g., EMP001" className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''} /> */}
                   <Input
                     name="employee_code"
                     value={formData.employee_code}
@@ -651,14 +649,13 @@ export default function EmployeeCombined() {
                     placeholder="e.g., EMP001"
                     minLength={3}
                     maxLength={20}
+                    required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
 
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-slate-700">Employee Name *</Label>
-                  {/* <Input name="employee_name" value={formData.employee_name} onChange={handleInputChange} readOnly={isReadOnly}
-                    placeholder="e.g., John Doe" className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''} /> */}
                   <Input
                     name="employee_name"
                     value={formData.employee_name}
@@ -667,6 +664,7 @@ export default function EmployeeCombined() {
                     placeholder="e.g., John Doe"
                     minLength={3}
                     maxLength={20}
+                    required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
                 </div>
@@ -676,7 +674,7 @@ export default function EmployeeCombined() {
                 {isReadOnly ? (
                   <Input value={formData.emp_type_name || '—'} readOnly className="bg-slate-50 text-slate-600" />
                 ) : (
-                  <select name="emp_type" value={formData.emp_type} onChange={handleInputChange}
+                  <select name="emp_type" value={formData.emp_type} onChange={handleInputChange} required
                     className="w-full h-10 px-3 border border-input rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-slate-900">
                     <option value="">-- Select Type --</option>
                     {empTypes.map(t => (
@@ -687,9 +685,7 @@ export default function EmployeeCombined() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-slate-700">Phone Number</Label>
-                  {/* <Input name="phone_no" value={formData.phone_no || ''} onChange={handleInputChange} readOnly={isReadOnly}
-                    placeholder="+1234567890" className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''} /> */}
+                  <Label className="text-slate-700">Phone Number *</Label>
                   <Input
                     name="phone_no"
                     value={formData.phone_no || ''}
@@ -707,13 +703,12 @@ export default function EmployeeCombined() {
                     minLength={10}
                     maxLength={10}
                     pattern="[0-9]{10}"
+                    required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-slate-700">Device PIN</Label>
-                  {/* <Input name="password" value={formData.password || ''} onChange={handleInputChange} readOnly={isReadOnly}
-                    placeholder="e.g., 1234" className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''} /> */}
+                  <Label className="text-slate-700">Device PIN *</Label>
                   <Input
                     name="password"
                     value={formData.password || ''}
@@ -722,6 +717,7 @@ export default function EmployeeCombined() {
                     placeholder="e.g., 1234"
                     minLength={3}
                     maxLength={20}
+                    required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
                 </div>
@@ -735,16 +731,16 @@ export default function EmployeeCombined() {
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button variant="outline" onClick={() => setIsModalOpen(false)} className="text-slate-600">
+                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="text-slate-600">
                   {isReadOnly ? 'Close' : 'Cancel'}
                 </Button>
                 {!isReadOnly && (
-                  <Button onClick={handleEmpSubmit} disabled={submitting} className="bg-slate-900 hover:bg-slate-700 text-white">
+                  <Button type="submit" disabled={submitting} className="bg-slate-900 hover:bg-slate-700 text-white">
                     {submitting ? 'Saving...' : modalMode === 'edit' ? 'Update' : 'Save'}
                   </Button>
                 )}
               </div>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
 
