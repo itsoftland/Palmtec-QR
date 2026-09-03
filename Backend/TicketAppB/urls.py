@@ -55,6 +55,7 @@ urlpatterns = [
     path('create-company', company_views.create_company, name='create_company'),
     path('update-company-details/<int:pk>', company_views.update_company_details, name='update_company'),
     path('delete-company/<int:pk>', company_views.delete_company, name='delete_company'),
+    path('permanently-delete-company/<int:pk>', company_views.permanently_delete_company, name='permanently_delete_company'),
     path('register-company-license/<int:pk>', company_views.register_company_with_license_server, name='register_company_license'),
     path('validate-company-license/<int:pk>', company_views.validate_company_license, name='validate_company_license'),
     path('sync-company-license/<int:pk>',         company_views.sync_company_license,         name='sync_company_license'),

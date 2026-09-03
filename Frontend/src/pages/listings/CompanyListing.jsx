@@ -6,7 +6,7 @@ import {
   Building2, CheckCircle2, CircleDot, Search,
   Phone, MapPin, IdCard, ArrowLeft, AlertCircle,
   Download, Plus, Mail, KeyRound, User, Sparkles,
-  Eye, EyeOff, Edit, X, RefreshCw, Info,
+  Eye, EyeOff, Edit, X, RefreshCw, Info, Trash2,
 } from 'lucide-react';
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -212,6 +212,7 @@ export default function CompanyListing() {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isDealerAdmin = currentUser?.role === 'dealer_admin';
   const isExecutive = currentUser?.role === 'executive';
+  const isSuperadmin = currentUser?.role === 'superadmin';
   const executiveState = currentUser?.state || '';
 
   // ── List state ───────────────────────────────────────────────────────────
@@ -221,6 +222,7 @@ export default function CompanyListing() {
   const [validatingLicense, setValidatingLicense] = useState({});
   const [syncingLicense, setSyncingLicense] = useState({});
   const [togglingActive, setTogglingActive] = useState({});
+  const [deletingPermanent, setDeletingPermanent] = useState({});
   const [search, setSearch] = useState('');
 
   // ── Sync modal state ─────────────────────────────────────────────────────
@@ -460,6 +462,35 @@ export default function CompanyListing() {
       setCompanies(list => list.map(c => c.id === company.id ? { ...c, is_active: company.is_active } : c));
       window.alert(err.response?.data?.message || err.response?.data?.error || 'Failed to update status.');
     } finally { setTogglingActive(p => ({ ...p, [company.id]: false })); }
+  };
+
+  const handlePermanentDelete = async (company) => {
+    const typed = window.prompt(
+      `This permanently deletes "${company.company_name}" and all its data. This cannot be undone.\n\nType the company name exactly to confirm:`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== company.company_name) {
+      window.alert('Company name did not match. Deletion cancelled.');
+      return;
+    }
+    setDeletingPermanent(p => ({ ...p, [company.id]: true }));
+    try {
+      const res = await api.delete(`${BASE_URL}/permanently-delete-company/${company.id}`, {
+        data: { confirm_name: typed.trim() },
+        timeout: 60000,
+      });
+      if (res.status === 200) {
+        window.alert(res.data.message || 'Company permanently deleted.');
+        setCompanies(list => list.filter(c => c.id !== company.id));
+      }
+    } catch (err) {
+      if (err.code === 'ECONNABORTED') {
+        window.alert('Deletion is taking longer than expected. It may still complete on the server — refresh the list to check.');
+        fetchCompanies();
+      } else {
+        window.alert(err.response?.data?.error || 'Failed to delete company.');
+      }
+    } finally { setDeletingPermanent(p => ({ ...p, [company.id]: false })); }
   };
 
   // ── Edit / View modal ────────────────────────────────────────────────────
@@ -747,6 +778,14 @@ export default function CompanyListing() {
                             className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors disabled:opacity-30">
                             <Edit size={14} />
                           </button>
+                          {isSuperadmin && (
+                            <button onClick={() => handlePermanentDelete(company)} disabled={deletingPermanent[company.id]} title="Permanently delete"
+                              className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors disabled:opacity-30">
+                              {deletingPermanent[company.id]
+                                ? <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                : <Trash2 size={14} />}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

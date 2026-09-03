@@ -888,6 +888,23 @@ def create_company(request):
     return Response({"message": "Company created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
 
 
+def _release_protected_transactional_fks(company):
+    """
+    Null out company_code on tables where the FK is on_delete=PROTECT
+    (RawDataLog, TransactionData, ScheduleData, TripData, OdometerData,
+    ExpenseData). These hold ticketing/financial history and must never
+    cascade-delete, but PROTECT also blocks Company.delete() outright if
+    any rows exist. Bulk-null (field is nullable) so the rows are orphaned
+    but preserved, and the company delete can proceed.
+    """
+    from ...models import RawDataLog, TransactionData, ScheduleData, TripData, OdometerData, ExpenseData
+
+    for model in (RawDataLog, TransactionData, ScheduleData, TripData, OdometerData, ExpenseData):
+        updated = model.objects.filter(company_code=company).update(company_code=None)
+        if updated:
+            logger.info(f"[release_protected_fks] Orphaned {updated} {model.__name__} rows for company '{company.company_name}'.")
+
+
 def _backup_company_data(company):
     """
     Serialize all company-related management data to a timestamped JSON file.
@@ -1027,6 +1044,7 @@ def delete_company(request, pk):
     else:
         logger.warning(f"[delete_company] Backup FAILED for '{company_name}' — proceeding with deletion anyway.")
 
+    _release_protected_transactional_fks(company)
     company.delete()
     logger.warning(f"Company '{company_name}' (pk={pk}) HARD-DELETED by {user.username}.")
 
@@ -1737,3 +1755,62 @@ def sync_company_license_confirm(request, pk):
         'message': 'License data synced successfully.',
         'data': serializer.data,
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, LicensePermission])
+@transaction.atomic
+def permanently_delete_company(request, pk):
+    """
+    Permanently delete a company. Superadmin only.
+
+    Requires the request body to contain {"confirm_name": "<exact company_name>"}
+    as an explicit confirmation guard against accidental deletion.
+
+    Takes a full JSON snapshot backup (management/masterdata) before the
+    hard-delete. Transactional data (tickets, trips, schedules) is left in
+    the DB with an orphaned company_code FK.
+    """
+    user = request.user
+    if user.role != UserRole.SUPERADMIN:
+        return Response({'error': 'Superadmin only'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        company = Company.objects.select_for_update().get(pk=pk)
+    except Company.DoesNotExist:
+        return Response({'error': 'Company not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    company_name = company.company_name
+    confirm_name = (request.data.get('confirm_name') or '').strip()
+    if confirm_name != company_name:
+        return Response(
+            {'error': f'Confirmation failed. Type the company name "{company_name}" exactly to confirm permanent deletion.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Soft-deactivate all company users before deletion to avoid orphaned logins
+    from django.contrib.auth import get_user_model as _get_user_model
+    _User = _get_user_model()
+    deactivated = _User.objects.filter(company=company, is_active=True).update(is_active=False)
+    logger.info(f"Deactivated {deactivated} users for company '{company_name}' before permanent deletion.")
+
+    bak_path = _backup_company_data(company)
+    if bak_path:
+        logger.info(f"[permanently_delete_company] Backup written: {bak_path}")
+    else:
+        logger.warning(f"[permanently_delete_company] Backup FAILED for '{company_name}' — proceeding with deletion anyway.")
+
+    _release_protected_transactional_fks(company)
+    company.delete()
+    logger.warning(f"Company '{company_name}' (pk={pk}) PERMANENTLY DELETED by {user.username}.")
+
+    log_action(
+        actor=user, action=AuditLog.ActionType.DELETE,
+        target_model='Company', target_id=pk,
+        target_display=company_name,
+        details={'action': 'permanent_delete'},
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({'message': f'"{company_name}" permanently deleted.'}, status=status.HTTP_200_OK)
+
