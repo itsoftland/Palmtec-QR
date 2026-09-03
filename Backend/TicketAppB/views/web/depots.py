@@ -39,11 +39,12 @@ def create_depot(request):
     if not request.data:
         return Response({"message": "No input received"}, status=status.HTTP_400_BAD_REQUEST)
 
-    serializer = DepotSerializer(data=request.data)
+    company_instance = user.company
+    if not company_instance:
+        return Response({"message": "No company to map depot to (User has no mapped company)."}, status=status.HTTP_400_BAD_REQUEST)
+
+    serializer = DepotSerializer(data=request.data, context={'company': company_instance})
     if serializer.is_valid():
-        company_instance = user.company
-        if not company_instance:
-            return Response({"message": "No company to map depot to (User has no mapped company)."}, status=status.HTTP_400_BAD_REQUEST)
         depot = serializer.save(company=company_instance, created_by=user)
         logger.info(f"Created new depot: {depot.depot_name} (ID: {depot.id})")
         return Response({"message": "Depot created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
@@ -63,7 +64,7 @@ def update_depot_details(request, pk):
         logger.error(f"No Depot found with ID under the user's company: {pk}")
         return Response({"message": "Depot not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    serializer = DepotSerializer(depot, data=request.data, partial=True)
+    serializer = DepotSerializer(depot, data=request.data, partial=True, context={'company': user.company})
     if serializer.is_valid():
         serializer.save()
         logger.info(f"Updated depot: {depot.depot_name} (ID: {pk})")

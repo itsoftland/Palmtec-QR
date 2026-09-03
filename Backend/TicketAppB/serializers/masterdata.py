@@ -116,6 +116,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Selected employee type does not belong to your company.")
         return value
 
+    def validate_employee_code(self, value):
+        value = (value or '').strip()
+        company = self.context.get('company')
+        if company:
+            qs = Employee.objects.filter(company=company, employee_code__iexact=value)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError('This employee code already exists in your company.')
+
+        return value
+
 
 class VehicleTypeSerializer(serializers.ModelSerializer):
     company    = serializers.PrimaryKeyRelatedField(read_only=True)

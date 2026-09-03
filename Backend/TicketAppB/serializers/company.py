@@ -144,3 +144,15 @@ class DepotSerializer(serializers.ModelSerializer):
             for rd in route_depots
             if rd.route
         ]
+
+    def validate_depot_code(self, value):
+        value = (value or '').strip()
+        company = self.context.get('company')
+        if company:
+            qs = Depot.objects.filter(company=company, depot_code__iexact=value)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError('Failed! Depot code Already existing')
+
+        return value
