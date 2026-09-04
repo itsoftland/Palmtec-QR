@@ -437,7 +437,7 @@ export default function Login() {
                   </span>
                   {/* <input
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
+                    placeholder=""
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     disabled={loading}
@@ -453,7 +453,7 @@ export default function Login() {
                   /> */}
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
+                    placeholder="eg: 1234"
                     value={password}
                     minLength={3}
                     maxLength={30}

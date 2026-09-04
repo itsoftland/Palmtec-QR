@@ -288,6 +288,16 @@ export default function DeviceRegistry() {
     }
   };
 
+  const handleDelete = async (device) => {
+    if (!window.confirm(`Permanently delete device ${device.serial_number}? This cannot be undone.`)) return;
+    try {
+      await api.delete(`${BASE_URL}/etm-devices/${device.id}/delete`);
+      fetchAll();
+    } catch (err) {
+      alert(err?.response?.data?.error || "Delete failed");
+    }
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const by = summary?.by_status ?? {};
   const stockSelected = devices.filter(d => selected.has(d.serial_number) && d.allocation_status === "Stock");
@@ -558,6 +568,15 @@ export default function DeviceRegistry() {
                           className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 border border-slate-300 hover:bg-slate-200 transition-colors"
                         >
                           Return to Stock
+                        </button>
+                      )}
+                      {/* Delete — superadmin only, Stock devices only */}
+                      {isSuperadmin && device.allocation_status === "Stock" && (
+                        <button
+                          onClick={() => handleDelete(device)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium bg-red-600 text-white border border-red-600 hover:bg-red-700 transition-colors"
+                        >
+                          Delete
                         </button>
                       )}
                     </div>

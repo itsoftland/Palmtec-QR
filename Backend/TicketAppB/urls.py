@@ -217,6 +217,7 @@ urlpatterns = [
     path('etm-devices/<int:device_id>/set-palmtec-id',   device_registry_views.set_palmtec_id,   name='etm_set_palmtec_id'),
     path('etm-devices/<int:device_id>/set-aggregator-tid', device_registry_views.set_aggregator_tid,  name='etm_set_aggregator_tid'),
     path('etm-devices/sync-aggregator-tids',               device_registry_views.sync_aggregator_tids, name='etm_sync_aggregator_tids'),
+    path('etm-devices/<int:device_id>/delete',          device_registry_views.delete_device,        name='etm_delete'),
 
     # Palmtec device data APIs (server → APK → USB → device)
     path('device/routes',      palmtec_views.get_routes_list),

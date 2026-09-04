@@ -13,6 +13,7 @@ Dealer assigns from their pool to a client company (Allocated).
   POST  /etm-devices/<id>/allocate       — Dealer allocates one pool device to a client company
   POST  /etm-devices/<id>/deactivate     — Suspend device (sets is_active=False)
   POST  /etm-devices/<id>/reactivate    — Re-enable a suspended device
+  DELETE /etm-devices/<id>/delete        — Permanently delete a Stock device (superadmin)
 """
 
 import io
@@ -890,3 +891,45 @@ def sync_aggregator_tids(request):
         'updated': updated,
         'not_found_in_map': not_found,
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def delete_device(request, device_id):
+    """
+    DELETE /etm-devices/<id>/delete
+
+    Permanently removes an ETM device. Only Stock devices (never allocated
+    to a dealer or company) may be deleted — anything else must be returned
+    to Stock first via unmap / return-to-stock. Superadmin only.
+    """
+    user = request.user
+    if not _is_superadmin(user):
+        return Response({'error': 'Superadmin only'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        device = ETMDevice.objects.get(pk=device_id)
+    except ETMDevice.DoesNotExist:
+        return Response({'error': 'Device not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if device.allocation_status != ETMDevice.AllocationStatus.STOCK:
+        return Response({
+            'error': 'Only Stock devices can be deleted. Return this device to Stock first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    serial_number = device.serial_number
+    device_pk = device.pk
+    device.delete()
+
+    log_action(
+        actor=user, action=AuditLog.ActionType.DELETE,
+        target_model='ETMDevice', target_id=device_pk,
+        target_display=serial_number,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({'message': f'Device {serial_number} deleted.'}, status=status.HTTP_200_OK)
+
+
+
+
