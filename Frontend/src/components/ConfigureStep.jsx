@@ -3,6 +3,9 @@
 // Responsible for: company select + import trigger
 // ---------------------------------------------------------------
 
+import { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
+
 // The tables this import covers — purely informational for the user
 // Maps MDB table name → Django model name
 const TABLE_MAPPINGS = [
@@ -46,6 +49,8 @@ export default function ConfigureStep({
   importing,
   importError,
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <div className="space-y-5">
       <div>
@@ -103,16 +108,26 @@ export default function ConfigureStep({
             onChange={(e) => onPasswordProtectedChange(e.target.checked)}
             className="rounded border-slate-300 text-slate-800 focus:ring-slate-500"
           />
-          File is password protected
+          Password
         </label>
         {isPasswordProtected && (
-          <input
-            type="password"
-            value={mdbPassword}
-            onChange={(e) => onPasswordChange(e.target.value)}
-            placeholder="MDB database password"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={mdbPassword}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              placeholder="MDB database password"
+              className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         )}
       </div>
 
