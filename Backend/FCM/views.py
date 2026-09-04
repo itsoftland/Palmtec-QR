@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
-from TicketAppB.models.auth import UserSession
+from TicketAppB.models.auth import UserSession, FCMSession
 
 # Create your views here.
 # getting FCM Token from apk
@@ -32,6 +32,11 @@ class FCMTokenView(APIView):
             # device_type="android"
         ).first()
 
+        active_fcm_session = FCMSession.objects.filter(
+            user=user,
+            is_active=True
+        ).first()
+
 
         if not active_session:
             return Response(
@@ -41,8 +46,19 @@ class FCMTokenView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        if not active_fcm_session:
+            return Response(
+                {
+                    "error": "UserSession not found"
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         active_session.fcm_token = fcm_token
         active_session.save(update_fields=['fcm_token'])
+
+        active_fcm_session.fcm_token = fcm_token
+        active_fcm_session.save(update_fields=['fcm_token'])
 
 
         return Response(

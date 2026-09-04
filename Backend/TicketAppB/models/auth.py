@@ -338,3 +338,52 @@ class DevicePendingApproval(models.Model):
 
     def __str__(self):
         return f'{self.user.username} | {self.device_uuid[:16]}… | {self.status}'
+
+
+
+class FCMSession(models.Model):
+
+    class DeviceType(models.TextChoices):
+        ANDROID     = 'android',     'Android'
+        IOS         = 'ios',         'iOS'
+        WEB_DESKTOP = 'web_desktop', 'Web Desktop'
+        WEB_MOBILE  = 'web_mobile',  'Web Mobile'
+        UNKNOWN     = 'unknown',     'Unknown'
+
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='fcm_sessions',
+    )
+
+    device_type = models.CharField(
+        max_length=20,
+        choices=DeviceType.choices,
+        default=DeviceType.UNKNOWN,
+    )
+
+    user_agent = models.TextField(blank=True, null=True)
+
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    device_uuid = models.CharField(max_length=255, null=True, blank=True)
+
+    fcm_token = models.TextField(
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'fcm_session'
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+        ]
+
+    def __str__(self):
+        status = 'Active' if self.is_active else 'Inactive'
+        return f'{self.user.username} | {self.device_type} | {status}'
+    
+        

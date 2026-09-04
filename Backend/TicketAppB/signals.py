@@ -113,70 +113,70 @@ def sync_fare_route_name(sender, instance, created, **kwargs):
 
 
 
-@receiver(
-    post_save,
-    sender=Depot
-)
-def depot_created(
-    sender,
-    instance,
-    created,
-    **kwargs
-):
+# @receiver(
+#     post_save,
+#     sender=Depot
+# )
+# def depot_created(
+#     sender,
+#     instance,
+#     created,
+#     **kwargs
+# ):
 
-    if created:
+#     if created:
 
-        print(f"New depot created: {instance}")
-        print("---------")
-        User = get_user_model()
-        company_users = list(User.objects.filter(company=instance.company))
-        print(f"Users in company '{instance.company}': {company_users}")
+#         print(f"New depot created: {instance}")
+#         print("---------")
+#         User = get_user_model()
+#         company_users = list(User.objects.filter(company=instance.company))
+#         print(f"Users in company '{instance.company}': {company_users}")
 
 
-        print("Active User")
-        active_sessions = UserSession.objects.filter(
-            user__in=company_users, is_active=True,
-        )
-        for session in active_sessions:
+#         print("Active User")
+#         active_sessions = UserSession.objects.filter(
+#             user__in=company_users, is_active=True,
+#         )
+#         for session in active_sessions:
             
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+#             print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
-            if not session.fcm_token:
-                print("token not found")
-                return 
-            title = "New DEPOT"
-            body = "A new Depot has been created."
-            try:
-                send_push_notification(
-                    token=session.fcm_token,
-                    title=title,
-                    body=body,
-                    data={
-                        "type": "depot",
-                    }
-                )
+#             if not session.fcm_token:
+#                 print("token not found")
+#                 return 
+#             title = "New DEPOT"
+#             body = "A new Depot has been created."
+#             try:
+#                 send_push_notification(
+#                     token=session.fcm_token,
+#                     title=title,
+#                     body=body,
+#                     data={
+#                         "type": "depot",
+#                     }
+#                 )
 
-                print("notification send")
-                FCMLog.objects.create(
-                    user=session.user,
-                    token=session.fcm_token,
-                    title=title,
-                    body=body,
-                    status="success",
-                )
+#                 print("notification send")
+#                 FCMLog.objects.create(
+#                     user=session.user,
+#                     token=session.fcm_token,
+#                     title=title,
+#                     body=body,
+#                     status="success",
+#                 )
 
-            except Exception as e:
-                print(
-                    f"Failed to send FCM notification: {e}"
-                )
-                FCMLog.objects.create(
-                    user=session.user,
-                    token=session.fcm_token,
-                    title=title,
-                    body=body,
-                    status="failed",
-                    error=str(e),
-                )
+#             except Exception as e:
+#                 print(
+#                     f"Failed to send FCM notification: {e}"
+#                 )
+#                 FCMLog.objects.create(
+#                     user=session.user,
+#                     token=session.fcm_token,
+#                     title=title,
+#                     body=body,
+#                     status="failed",
+#                     error=str(e),
+#                 )
 
 
 

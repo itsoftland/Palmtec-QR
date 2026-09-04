@@ -43,6 +43,7 @@ from ...authentication import (
     kill_session, session_key_exists, get_session_timeout, SessionInfo, COOKIE_NAME,
 )
 from .audit_logs import log_action
+from TicketAppB.models.auth import FCMSession
 
 logger = logging.getLogger(__name__)
 _token_generator = PasswordResetTokenGenerator()
@@ -365,6 +366,32 @@ def login_view(request):
         device_type = str(session.device_type)
         set_session_cache(session_uid, user.pk, device_type)
 
+        # fcm session create
+
+        FCMSession.objects.filter(
+            device_uuid=device_uuid,
+            is_active=True,
+        ).update(
+            is_active=False,
+        )
+
+        FCMSession.objects.filter(
+            user=user,
+            is_active=True,
+        ).update(
+            is_active=False,
+        )
+
+        fcm_session = FCMSession.objects.create(
+            user=user,
+            device_type=_detect_device_type(request),
+            user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:500],
+            is_active=True,
+            device_uuid=device_uuid,
+        )
+
+        fcm_session.save()
+
     # ── 9: Issue cookie ───────────────────────────────────────────────────────
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
@@ -420,6 +447,15 @@ def logout_view(request):
             delete_session_cache(session_uid)
 
     if logged_out_user:
+        # Deactivate all active FCM sessions for this user.
+        FCMSession.objects.filter(
+            user=logged_out_user,
+            is_active=True,
+        ).update(
+            is_active=False,
+        )
+
+
         log_action(
             actor=logged_out_user, action=AuditLog.ActionType.LOGOUT,
             target_model='CustomUser', target_id=logged_out_user.pk,
@@ -831,6 +867,32 @@ def apk_login_view(request):
         session_uid = str(session.session_uid)
         device_type = str(session.device_type)
         set_session_cache(session_uid, user.pk, device_type)
+
+        # fcm session create
+    
+        FCMSession.objects.filter(
+            device_uuid=device_uuid,
+            is_active=True,
+        ).update(
+            is_active=False,
+        )
+
+        FCMSession.objects.filter(
+            user=user,
+            is_active=True,
+        ).update(
+            is_active=False,
+        )
+
+        fcm_session = FCMSession.objects.create(
+            user=user,
+            device_type=_detect_device_type(request),
+            user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:500],
+            is_active=True,
+            device_uuid=device_uuid,
+        )
+
+        fcm_session.save()
 
     # ── 9: Issue cookie ───────────────────────────────────────────────────────
     user.last_login = timezone.now()
