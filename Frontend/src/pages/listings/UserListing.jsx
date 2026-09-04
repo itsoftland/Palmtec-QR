@@ -682,7 +682,7 @@ export default function UserListing() {
                       <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-slate-400 cursor-pointer" title="Edit user">
                         <Edit size={14} />
                       </button>
-                      {isSuperadmin && (
+                      {(isSuperadmin || isCompanyAdmin) && (
                         <button onClick={() => openPw(user)} className="p-1.5 rounded-md text-slate-400 cursor-pointer" title="Change password">
                           <KeyRound size={14} />
                         </button>
@@ -780,7 +780,7 @@ export default function UserListing() {
               >
                 <Edit size={14} />Edit
               </button>
-              {isSuperadmin && (
+              {(isSuperadmin || isCompanyAdmin) && (
                 <button
                   onClick={() => { closeModal(); setTimeout(() => openPw(selectedUser), 100); }}
                   className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm rounded-lg font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"

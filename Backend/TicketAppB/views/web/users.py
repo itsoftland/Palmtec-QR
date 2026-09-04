@@ -625,21 +625,27 @@ def user_capacity(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, LicensePermission])
 def change_user_password(request, user_id):
-    """Superadmin directly sets a new password for any user (UI button)."""
+    """Superadmin resets any user's password; company_admin resets password for company_user in their own company (UI button)."""
     requester = request.user
-    if requester.role != UserRole.SUPERADMIN:
-        return Response({'error': 'Only superadmin can reset another user\'s password.'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        target = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response({'error': f'User {user_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if requester.role == UserRole.SUPERADMIN:
+        pass
+    elif requester.role == UserRole.COMPANY_ADMIN:
+        if target.role != UserRole.COMPANY_USER or target.company_id != requester.company_id:
+            return Response({'error': 'You can only reset passwords for users in your own company.'}, status=status.HTTP_403_FORBIDDEN)
+    else:
+        return Response({'error': 'Only superadmin or company admin can reset another user\'s password.'}, status=status.HTTP_403_FORBIDDEN)
 
     new_password = (request.data.get('new_password') or '').strip()
     if not new_password:
         return Response({'error': 'new_password is required.'}, status=status.HTTP_400_BAD_REQUEST)
     if len(new_password) < 8:
         return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        target = User.objects.get(pk=user_id)
-    except User.DoesNotExist:
-        return Response({'error': f'User {user_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     if target.check_password(new_password):
         return Response({'error': 'New password must be different from the old password.'}, status=status.HTTP_400_BAD_REQUEST)
