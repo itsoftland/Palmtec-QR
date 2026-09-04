@@ -17,7 +17,7 @@ import hashlib
 from django.conf import settings
 from FCM.firebase import send_push_notification
 from FCM.models import FCMLog
-from TicketAppB.models.auth import UserSession
+from TicketAppB.models.auth import UserSession, FCMSession
 
 
 logger = logging.getLogger(__name__)
@@ -304,12 +304,12 @@ def aggregator_settlement_data(request):
 
 
         print("Active User")
-        active_sessions = UserSession.objects.filter(
+        active_sessions = FCMSession.objects.filter(
             user__in=company_users, is_active=True,
         )
         for session in active_sessions:
             
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
             if not session.fcm_token:
                 print("token not found")

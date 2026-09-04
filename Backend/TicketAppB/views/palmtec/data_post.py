@@ -8,7 +8,7 @@ from django.utils.timezone import make_aware
 from django.views.decorators.csrf import csrf_exempt
 from TicketAppB.models.transactions import TransactionData
 from django.contrib.auth import get_user_model
-from TicketAppB.models.auth import UserSession
+from TicketAppB.models.auth import UserSession, FCMSession
 from FCM.models import FCMLog
 from FCM.firebase import send_push_notification
 
@@ -93,13 +93,13 @@ def getScheduleOpenDataFromDevice(request):
         User = get_user_model()
         company_users = list(User.objects.filter(company=company_instance))
 
-        active_sessions = UserSession.objects.filter(
+        active_sessions = FCMSession.objects.filter(
                 user__in=company_users, is_active=True,
             )
 
         for session in active_sessions:
                     
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
             if not session.fcm_token:
                 print("token not found")
@@ -189,13 +189,13 @@ def getTripOpenDataFromDevice(request):
         User = get_user_model()
         company_users = list(User.objects.filter(company=company_instance))
 
-        active_sessions = UserSession.objects.filter(
+        active_sessions = FCMSession.objects.filter(
                 user__in=company_users, is_active=True,
             )
 
         for session in active_sessions:
                     
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
             if not session.fcm_token:
                 print("token not found")
@@ -285,13 +285,13 @@ def getTicketDataFromDevice(request):
         User = get_user_model()
         company_users = list(User.objects.filter(company=company_instance))
 
-        active_sessions = UserSession.objects.filter(
+        active_sessions = FCMSession.objects.filter(
                 user__in=company_users, is_active=True,
             )
 
         for session in active_sessions:
                     
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
             if not session.fcm_token:
                 print("token not found")
@@ -383,13 +383,13 @@ def getScheduleCloseDataFromDevice(request):
         User = get_user_model()
         company_users = list(User.objects.filter(company=company_instance))
 
-        active_sessions = UserSession.objects.filter(
+        active_sessions = FCMSession.objects.filter(
                 user__in=company_users, is_active=True,
             )
 
         for session in active_sessions:
                     
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
             if not session.fcm_token:
                 print("token not found")
@@ -479,13 +479,13 @@ def getTripCloseDataFromDevice(request):
         User = get_user_model()
         company_users = list(User.objects.filter(company=company_instance))
 
-        active_sessions = UserSession.objects.filter(
+        active_sessions = FCMSession.objects.filter(
                 user__in=company_users, is_active=True,
             )
 
         for session in active_sessions:
                     
-            print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
+            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
 
             if not session.fcm_token:
                 print("token not found")
