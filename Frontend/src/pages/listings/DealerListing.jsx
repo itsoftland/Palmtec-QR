@@ -361,7 +361,27 @@ export default function DealerListing() {
     user_username: '', user_email: '', user_password: '',
   });
 
-  const openView = (dealer) => { setModalForm(populateModal(dealer)); setEditingItem(dealer); setModal('view'); setLicenseAction({ busy: false, msg: '', err: '' }); };
+  const openView = (dealer) => {
+    setModalForm(populateModal(dealer));
+    setEditingItem(dealer);
+    setModal('view');
+    setLicenseAction({ busy: false, msg: '', err: '' });
+    if (dealer.authentication_status === 'Approve') {
+      api.get(`${BASE_URL}/dealer-dashboard`, { params: { dealer: dealer.id } })
+        .then(res => {
+          const pool = res.data?.data?.pool;
+          if (!pool) return;
+          setEditingItem(prev => (prev && prev.id === dealer.id) ? {
+            ...prev,
+            remaining_palmtec_count: pool.palmtec?.remaining,
+            remaining_total_user_count: pool.total_users?.remaining,
+            remaining_premium_user_count: pool.premium?.remaining,
+            remaining_intermediate_user_count: pool.inter?.remaining,
+          } : prev);
+        })
+        .catch(err => console.error('Dealer pool fetch error:', err));
+    }
+  };
   const openEdit = (dealer) => { setModalForm(populateModal(dealer)); setEditingItem(dealer); setModal('edit'); };
 
   const handleModalInputChange = (e) => {
