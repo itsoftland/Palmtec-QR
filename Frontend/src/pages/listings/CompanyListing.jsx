@@ -506,6 +506,10 @@ export default function CompanyListing() {
       state: company.state || '',
       district: company.district || '',
       is_active: company.is_active ?? true,
+      palmtec_count: company.palmtec_count ?? 0,
+      total_user_count: company.total_user_count ?? 0,
+      premium_user_count: company.premium_user_count ?? 0,
+      intermediate_user_count: company.intermediate_user_count ?? 0,
     });
     setEditingItem(company);
     setModal('view');
@@ -514,6 +518,13 @@ export default function CompanyListing() {
   const openEdit = (company) => {
     openView(company);
     setModal('edit');
+    if (isDealerAdmin && company.client_type === 'dealer_company') {
+      setPoolLoading(true);
+      api.get(`${BASE_URL}/dealer-dashboard`)
+        .then(res => setDealerPool(res.data?.data?.pool || null))
+        .catch(() => setDealerPool(null))
+        .finally(() => setPoolLoading(false));
+    }
   };
 
   const handleModalInputChange = (e) => {
@@ -526,8 +537,38 @@ export default function CompanyListing() {
     setModalForm(f => name === 'state' ? { ...f, state: value, district: '' } : { ...f, [name]: value });
   };
 
+  // Pool validation for editing a dealer_company's license allocation.
+  // Dealer pool "remaining" already nets out this company's *current* counts,
+  // so add them back to get the ceiling this edit may draw up to.
+  const editPoolErrors = useMemo(() => {
+    if (!isDealerAdmin || !dealerPool || !editingItem || editingItem.client_type !== 'dealer_company') return {};
+    const palmtec = parseInt(modalForm.palmtec_count) || 0;
+    const total = parseInt(modalForm.total_user_count) || 0;
+    const premium = parseInt(modalForm.premium_user_count) || 0;
+    const inter = parseInt(modalForm.intermediate_user_count) || 0;
+    const basic = total - premium - inter;
+    const avail = {
+      palmtec: dealerPool.palmtec.remaining + (editingItem.palmtec_count || 0),
+      total: dealerPool.total_users.remaining + (editingItem.total_user_count || 0),
+      premium: dealerPool.premium.remaining + (editingItem.premium_user_count || 0),
+      inter: dealerPool.inter.remaining + (editingItem.intermediate_user_count || 0),
+      basic: dealerPool.basic.remaining + ((editingItem.total_user_count || 0) - (editingItem.premium_user_count || 0) - (editingItem.intermediate_user_count || 0)),
+    };
+    const errs = {};
+    if (palmtec > avail.palmtec) errs.palmtec = `Max ${avail.palmtec} available`;
+    if (total > avail.total) errs.total = `Max ${avail.total} available`;
+    if (premium > avail.premium) errs.premium = `Max ${avail.premium} available`;
+    if (inter > avail.inter) errs.inter = `Max ${avail.inter} available`;
+    if (basic < 0) errs.basic = 'Total users must be ≥ premium + intermediate';
+    else if (basic > avail.basic) errs.basic = `Max ${avail.basic} basic slots available`;
+    return errs;
+  }, [isDealerAdmin, dealerPool, editingItem, modalForm.palmtec_count, modalForm.total_user_count, modalForm.premium_user_count, modalForm.intermediate_user_count]);
+
+  const showEditPoolFields = isDealerAdmin && editingItem?.client_type === 'dealer_company';
+
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    if (showEditPoolFields && Object.keys(editPoolErrors).length > 0) return;
     setModalSubmitting(true);
     try {
       const res = await api.put(`${BASE_URL}/update-company-details/${editingItem.id}`, {
@@ -540,6 +581,12 @@ export default function CompanyListing() {
         address: modalForm.address,
         state: modalForm.state,
         district: modalForm.district,
+        ...(showEditPoolFields && {
+          palmtec_count: parseInt(modalForm.palmtec_count) || 0,
+          total_user_count: parseInt(modalForm.total_user_count) || 0,
+          premium_user_count: parseInt(modalForm.premium_user_count) || 0,
+          intermediate_user_count: parseInt(modalForm.intermediate_user_count) || 0,
+        }),
       });
       if (res?.status === 200 || res?.status === 201) {
         window.alert(res.data.message || 'Company updated!');
@@ -679,7 +726,9 @@ export default function CompanyListing() {
                       </td>
                       <td className="px-5 py-4">
                         <span className="text-sm font-medium text-slate-700">
-                          {company.number_of_licences || 0}
+                          {company.client_type === 'dealer_company'
+                            ? (company.total_user_count || 0)
+                            : (company.number_of_licences || 0)}
                           <span className="text-xs text-slate-400 font-normal ml-1">units</span>
                         </span>
                       </td>
@@ -977,12 +1026,76 @@ export default function CompanyListing() {
               </div>
             </div>
 
+            {showEditPoolFields && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-sm font-semibold text-slate-800 mb-1">License Allocation</p>
+                <p className="text-xs text-slate-500 mb-3">Adjust units drawn from your dealer pool — cannot exceed your remaining balance.</p>
+
+                {poolLoading ? (
+                  <div className="mb-3 rounded-xl bg-slate-50 border border-slate-100 px-4 py-3 text-xs text-slate-400 animate-pulse">
+                    Loading pool balance…
+                  </div>
+                ) : dealerPool ? (
+                  <div className="mb-3 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden">
+                    <div className="grid grid-cols-5 divide-x divide-slate-100">
+                      {[
+                        { label: 'ETM Devices', val: dealerPool.palmtec.remaining + (editingItem?.palmtec_count || 0) },
+                        { label: 'Total Users', val: dealerPool.total_users.remaining + (editingItem?.total_user_count || 0) },
+                        { label: 'Premium', val: dealerPool.premium.remaining + (editingItem?.premium_user_count || 0) },
+                        { label: 'Intermediate', val: dealerPool.inter.remaining + (editingItem?.intermediate_user_count || 0) },
+                        { label: 'Basic', val: dealerPool.basic.remaining + ((editingItem?.total_user_count || 0) - (editingItem?.premium_user_count || 0) - (editingItem?.intermediate_user_count || 0)) },
+                      ].map(({ label, val }) => (
+                        <div key={label} className="px-2 py-2 text-center">
+                          <p className="text-[10px] text-slate-400 leading-tight">{label}</p>
+                          <p className="text-sm font-bold tabular-nums leading-tight mt-0.5 text-slate-800">{val}</p>
+                          <p className="text-[9px] text-slate-400">available</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 text-xs text-amber-700">
+                    <AlertCircle size={13} className="shrink-0 text-amber-500" />
+                    Could not load pool balance. Backend validation will still apply.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { name: 'palmtec_count', errKey: 'palmtec', label: 'ETM Devices' },
+                    { name: 'total_user_count', errKey: 'total', label: 'Total Users' },
+                    { name: 'premium_user_count', errKey: 'premium', label: 'Premium Users' },
+                    { name: 'intermediate_user_count', errKey: 'inter', label: 'Intermediate Users' },
+                  ].map(({ name, errKey, label }) => (
+                    <div key={name} className="space-y-1.5">
+                      <label className="text-sm font-medium text-slate-700">{label}</label>
+                      <input
+                        type="number"
+                        name={name}
+                        min="0"
+                        max="999"
+                        value={modalForm[name]}
+                        onChange={handleModalInputChange}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 bg-white ${editPoolErrors[errKey] ? 'border-red-400 focus:ring-red-300' : 'border-slate-300 focus:ring-slate-400'}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(editPoolErrors).length > 0 && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 text-xs text-red-700">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                    <span>{Object.values(editPoolErrors).join(' · ')}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
               <button type="button" onClick={() => setModal(null)}
                 className="flex-1 inline-flex items-center justify-center h-9 px-4 text-sm rounded-lg font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors">
                 Cancel
               </button>
-              <button type="submit" disabled={modalSubmitting}
+              <button type="submit" disabled={modalSubmitting || (showEditPoolFields && Object.keys(editPoolErrors).length > 0)}
                 className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm rounded-lg font-medium bg-slate-900 hover:bg-slate-700 text-white cursor-pointer transition-colors shadow-sm disabled:opacity-50">
                 {modalSubmitting
                   ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Saving…</>

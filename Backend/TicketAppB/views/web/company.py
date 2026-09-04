@@ -1065,10 +1065,15 @@ def delete_company(request, pk):
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated, LicensePermission])
+@transaction.atomic
 def update_company_details(request, pk):
     """
     Update existing company details.
-    Cannot update license-related fields directly (use validate_license endpoint).
+    Cannot update license-related fields directly (use validate_license endpoint),
+    except palmtec_count/total_user_count/premium_user_count/intermediate_user_count,
+    which a dealer_admin may adjust for their own dealer_company records — validated
+    against the dealer's live remaining pool (see create_company Path B for the
+    same validation applied at creation time).
     """
     user = request.user
 
@@ -1076,7 +1081,7 @@ def update_company_details(request, pk):
         return Response({'error': 'Not authorized to update company details.'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
-        company = Company.objects.get(pk=pk)
+        company = Company.objects.select_for_update().get(pk=pk)
     except Company.DoesNotExist:
         logger.error(f"Company not found for update with ID: {pk}")
         return Response({"message": "Company not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -1087,23 +1092,91 @@ def update_company_details(request, pk):
     elif _is_dealer_admin(user):
         if company.dealer_id != user.dealer_id:
             return Response({'error': 'You can only update companies under your dealership.'}, status=status.HTTP_403_FORBIDDEN)
-    
-    serializer = CompanySerializer(company, data=request.data, partial=True)
+
+    # ── Dealer pool allocation update (dealer_admin, dealer_company only) ────────
+    pool_fields = ('palmtec_count', 'total_user_count', 'premium_user_count', 'intermediate_user_count')
+    if any(f in request.data for f in pool_fields):
+        if not _is_dealer_admin(user) or company.client_type != Company.ClientType.DEALER_COMPANY:
+            return Response(
+                {'error': 'License unit counts can only be updated by a dealer_admin for a dealer-managed company. Direct companies sync from the license server.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        def _pi(name):
+            if name not in request.data:
+                return getattr(company, name)
+            return _safe_int(request.data.get(name), getattr(company, name))
+
+        new_palmtec = _pi('palmtec_count')
+        new_total   = _pi('total_user_count')
+        new_premium = _pi('premium_user_count')
+        new_inter   = _pi('intermediate_user_count')
+
+        if new_premium + new_inter > new_total:
+            return Response(
+                {'error': 'premium_user_count + intermediate_user_count cannot exceed total_user_count.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ok, errs = _check_user_count_reduction(company, new_total, new_premium, new_inter)
+        if not ok:
+            return Response({
+                'error': 'Cannot reduce user counts below current assignments.',
+                'details': errs,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        allocated_devices = ETMDevice.objects.filter(
+            company=company, allocation_status=ETMDevice.AllocationStatus.ALLOCATED
+        ).count()
+        if new_palmtec < allocated_devices:
+            return Response({
+                'error': f'Cannot reduce palmtec_count to {new_palmtec}: '
+                         f'{allocated_devices} ETM devices are currently allocated to this company.',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            dealer = Dealer.objects.select_for_update().get(pk=company.dealer_id)
+        except Dealer.DoesNotExist:
+            return Response({'error': 'Dealer not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Dealer's live "given" totals already include this company's *current*
+        # allocation, so add it back to get the ceiling this company may draw up to.
+        user_slots    = dealer.users_slots_remaining
+        avail_palmtec = dealer.slots_remaining + company.palmtec_count
+        avail_total   = user_slots['total']    + company.total_user_count
+        avail_premium = user_slots['premium']  + company.premium_user_count
+        avail_inter   = user_slots['inter']    + company.intermediate_user_count
+
+        errors = []
+        if new_palmtec > avail_palmtec:
+            errors.append(f'ETM devices: requested {new_palmtec}, available {avail_palmtec}')
+        if new_total > avail_total:
+            errors.append(f'Total users: requested {new_total}, available {avail_total}')
+        if new_premium > avail_premium:
+            errors.append(f'Premium users: requested {new_premium}, available {avail_premium}')
+        if new_inter > avail_inter:
+            errors.append(f'Intermediate users: requested {new_inter}, available {avail_inter}')
+        if errors:
+            return Response({
+                'error': 'Insufficient dealer pool capacity.',
+                'details': errors,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        company.palmtec_count           = new_palmtec
+        company.total_user_count        = new_total
+        company.premium_user_count      = new_premium
+        company.intermediate_user_count = new_inter
+        company.save(update_fields=list(pool_fields))
+        logger.info(
+            f"Dealer '{user.username}' updated license allocation for company "
+            f"'{company.company_name}' (ID: {pk}): palmtec={new_palmtec}, total={new_total}, "
+            f"premium={new_premium}, inter={new_inter}"
+        )
+
+    other_data = {k: v for k, v in request.data.items() if k not in pool_fields}
+    serializer = CompanySerializer(company, data=other_data, partial=True)
 
     if serializer.is_valid():
-        # Guard: block reducing user counts below current tier assignments
-        def _si(v): return int(v) if v is not None else None
-        new_total   = _si(request.data.get('total_user_count'))
-        new_premium = _si(request.data.get('premium_user_count'))
-        new_inter   = _si(request.data.get('intermediate_user_count'))
-        if any(v is not None for v in (new_total, new_premium, new_inter)):
-            ok, errs = _check_user_count_reduction(company, new_total, new_premium, new_inter)
-            if not ok:
-                return Response({
-                    'error': 'Cannot reduce user counts below current assignments.',
-                    'details': errs,
-                }, status=status.HTTP_400_BAD_REQUEST)
-
         serializer.save()
         logger.info(f"Updated company: {company.company_name} (ID: {pk})")
         log_action(
@@ -1119,11 +1192,11 @@ def update_company_details(request, pk):
             },
             status=status.HTTP_200_OK
         )
-    
+
     logger.warning(f"Company update failed for ID {pk}: {serializer.errors}")
     return Response(
         {
-            "message": "Validation failed", 
+            "message": "Validation failed",
             "errors": serializer.errors
         },
         status=status.HTTP_400_BAD_REQUEST

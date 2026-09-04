@@ -238,8 +238,8 @@ export default function RouteListing() {
 
   // ── Section 7: Edit modal submit ─────────────────────────────────────────
   const handleSubmit = async () => {
-    if (formData.route_code.trim().length !== 4) {
-      window.alert('Route Code must be exactly 4 alphanumeric characters.');
+    if (formData.route_code.trim().length < 1) {
+      window.alert('Route Code is required.');
       return;
     }
     setSubmitting(true);
@@ -463,8 +463,8 @@ export default function RouteListing() {
       window.alert('Please fill all required fields.');
       return;
     }
-    if (route_code.trim().length !== 4) {
-      window.alert('Route Code must be exactly 4 alphanumeric characters.');
+    if (route_code.trim().length < 1) {
+      window.alert('Route Code is required.');
       return;
     }
     const n = parseInt(no_of_stages);
