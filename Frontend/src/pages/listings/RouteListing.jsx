@@ -1152,6 +1152,8 @@ export default function RouteListing() {
                                       return;
                                     }
 
+                                    if (val > 999) val = 999;
+
                                     updateWizardFareList(idx, String(val));
                                   }}
                                   onKeyDown={e => {
