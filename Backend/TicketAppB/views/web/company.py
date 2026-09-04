@@ -680,7 +680,8 @@ def all_company_data(request):
     Retrieve companies based on the requesting user's role.
 
     Visibility rules:
-      - superadmin   → all direct companies (client_type='direct')
+      - superadmin   → all direct companies (client_type='direct'), or every
+                       company (direct + dealer-created) when ?all=true is passed
       - executive    → companies they personally created (created_by=user)
       - dealer_admin → companies under their dealer (Company.dealer FK)
       - company_admin→ only their own company
@@ -688,8 +689,12 @@ def all_company_data(request):
     user = request.user
 
     if _is_superadmin(user):
-        # Superadmin sees all direct companies (not dealer-created sub-companies).
-        companies = Company.objects.filter(client_type='direct').order_by('-id')
+        if request.GET.get('all') == 'true':
+            # Full visibility, e.g. for tools (MDB import) that need every company.
+            companies = Company.objects.all().order_by('-id')
+        else:
+            # Superadmin sees all direct companies (not dealer-created sub-companies).
+            companies = Company.objects.filter(client_type='direct').order_by('-id')
 
     elif _is_executive(user):
         qs = Company.objects.filter(created_by=user, is_active=True)

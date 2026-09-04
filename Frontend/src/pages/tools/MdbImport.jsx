@@ -110,7 +110,7 @@ export default function MdbImport() {
   const fetchCompanies = async () => {
     setLoadingCompanies(true);
     try {
-      const response = await api.get(`${BASE_URL}/customer-data`);
+      const response = await api.get(`${BASE_URL}/customer-data?all=true`);
       setCompanies(response.data?.data || []);
     } catch (err) {
       console.error('Failed to fetch companies:', err);
