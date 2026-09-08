@@ -122,7 +122,7 @@ def create_user(request):
     username       = request.data.get('username')
     email          = request.data.get('email')
     role           = request.data.get('role')
-    password       = request.data.get('password')
+    password       = (request.data.get('password') or '').strip()
     company_id     = request.data.get('company_id')
     requested_tier = (request.data.get('tier') or '').strip().lower()
     executive_state = (request.data.get('state') or '').strip()
