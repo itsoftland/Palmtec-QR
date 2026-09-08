@@ -117,6 +117,25 @@ export default function Login() {
     };
   }, []);
 
+  const handleFormKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input')) return;
+
+    const form = e.currentTarget;
+    const inputs = Array.from(form.querySelectorAll('input')).filter(
+      input => input.type !== 'hidden' && !input.matches(':disabled') && !input.readOnly
+    );
+    const currentIndex = inputs.indexOf(e.target);
+    if (currentIndex === -1) return;
+
+    e.preventDefault();
+    const nextInput = inputs[currentIndex + 1];
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      form.requestSubmit();
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -351,7 +370,7 @@ export default function Login() {
 
           ) : (
             /* ── Login form ── */
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
               {/* username */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

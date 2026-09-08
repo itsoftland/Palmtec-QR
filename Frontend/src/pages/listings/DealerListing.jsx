@@ -32,9 +32,9 @@ function ModalWrapper({ open, onClose, title, icon: Icon, width = 'max-w-2xl', c
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function SectionCard({ step, active = true, complete, title, subtitle, children }) {
+function SectionCard({ step, active = true, complete, title, subtitle, errors = [], children }) {
   return (
-    <div className={`rounded-2xl border mb-4 transition-all duration-200 ${complete ? 'border-emerald-200 bg-white' :
+    <div data-form-section={step} className={`rounded-2xl border mb-4 transition-all duration-200 ${complete ? 'border-emerald-200 bg-white' :
       active ? 'border-slate-200 bg-white shadow-sm' :
         'border-slate-200 bg-slate-50/60'
       }`}>
@@ -50,9 +50,14 @@ function SectionCard({ step, active = true, complete, title, subtitle, children 
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
       </div>
-      <div className={`px-6 py-5 ${!active && !complete ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+      <fieldset disabled={!active && !complete} className={`px-6 py-5 w-full min-w-0 border-0 ${!active && !complete ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+        {errors.length > 0 && (
+          <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            Complete the required fields: <strong>{errors.join(', ')}</strong>.
+          </div>
+        )}
         {children}
-      </div>
+      </fieldset>
     </div>
   );
 }
@@ -221,6 +226,7 @@ export default function DealerListing() {
   const [form, setForm] = useState(EMPTY);
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [sectionErrors, setSectionErrors] = useState({});
 
   // ── Modal state (view / edit / sync) ─────────────────────────────────────
   const [modal, setModal] = useState(null);
@@ -258,7 +264,61 @@ export default function DealerListing() {
   // ── Form helpers ─────────────────────────────────────────────────────────
   const set = (k, v) => setForm(f => k === 'state' ? { ...f, state: v, district: '' } : { ...f, [k]: v });
 
-  const resetCreate = () => setForm(EMPTY);
+  const resetCreate = () => {
+    setForm(EMPTY);
+    setSectionErrors({});
+  };
+
+  const handleCreateEnter = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input, select')) return;
+
+    const formElement = e.currentTarget;
+    const controls = [...formElement.querySelectorAll('input, select, textarea')]
+      .filter(control => control.type !== 'hidden');
+    const currentIndex = controls.indexOf(e.target);
+    const nextEnabled = controls.slice(currentIndex + 1).find(control => !control.matches(':disabled'));
+
+    if (!e.target.checkValidity()) {
+      e.preventDefault();
+      e.target.reportValidity();
+      return;
+    }
+
+    if (nextEnabled) {
+      e.preventDefault();
+      nextEnabled.focus();
+      return;
+    }
+
+    // The final field keeps normal form behaviour, so Enter submits the form.
+    if (currentIndex === controls.length - 1) return;
+
+    e.preventDefault();
+    const section = e.target.closest('[data-form-section]');
+    const sectionNumber = section?.dataset.formSection;
+    const sectionControls = section
+      ? [...section.querySelectorAll('input, select, textarea')].filter(control => !control.matches(':disabled') && control.required)
+      : [];
+    const invalidControls = sectionControls.filter(control => !control.checkValidity());
+
+    if (invalidControls.length > 0) {
+      setSectionErrors(errors => ({
+        ...errors,
+        [sectionNumber]: invalidControls.map(control => control.dataset.label || control.name),
+      }));
+      return;
+    }
+
+    // React enables the following section after the current field updates.
+    // Focus it on the next frame once that update has rendered.
+    setSectionErrors(errors => ({ ...errors, [sectionNumber]: [] }));
+    requestAnimationFrame(() => {
+      const refreshedControls = [...formElement.querySelectorAll('input, select, textarea')]
+        .filter(control => control.type !== 'hidden');
+      const refreshedIndex = refreshedControls.indexOf(e.target);
+      refreshedControls.slice(refreshedIndex + 1).find(control => !control.matches(':disabled'))?.focus();
+    });
+  };
 
   // ── Create form completeness ──────────────────────────────────────────────
   const sec1 = !!(form.dealer_code && form.dealer_name && form.contact_person && form.contact_number && form.email);
@@ -1039,10 +1099,10 @@ export default function DealerListing() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── Left: Form ─────────────────────────────────────────────── */}
         <div className="lg:col-span-2">
-          <form onSubmit={handleCreateSubmit}>
+          <form onSubmit={handleCreateSubmit} onKeyDown={handleCreateEnter}>
 
             {/* Step 1: Dealer Identity */}
-            <SectionCard step={1} active complete={sec1} title="Dealer Identity" subtitle="Business details and primary point of contact.">
+            <SectionCard step={1} active complete={sec1} errors={sectionErrors[1]} title="Dealer Identity" subtitle="Business details and primary point of contact.">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="Dealer Code" required hint="Short unique reference">
                   <div className="flex gap-0">
@@ -1051,6 +1111,9 @@ export default function DealerListing() {
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white uppercase" /> */}
                     <input
                       type="text"
+                      name="dealer_code"
+                      data-label="Dealer Code"
+                      required
                       value={form.dealer_code}
                       onChange={e => set('dealer_code', e.target.value.toUpperCase())}
                       placeholder="AP-NTC-01"
@@ -1064,6 +1127,9 @@ export default function DealerListing() {
                   {/* <input value={form.dealer_name} onChange={e => set('dealer_name', e.target.value)} placeholder="Andhra Bus Tech LLP" className={inputCls} /> */}
                   <input
                     type="text"
+                    name="dealer_name"
+                    data-label="Dealer Name"
+                    required
                     value={form.dealer_name}
                     onChange={e => {
                       const value = e.target.value;
@@ -1081,6 +1147,9 @@ export default function DealerListing() {
                   {/* <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)} placeholder="Owner / manager" className={inputCls} /> */}
                   <input
                     type="text"
+                    name="contact_person"
+                    data-label="Contact Person"
+                    required
                     value={form.contact_person}
                     onChange={e => {
                       const value = e.target.value;
@@ -1101,6 +1170,9 @@ export default function DealerListing() {
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                     <input
                       type="text"
+                      name="contact_number"
+                      data-label="Contact Number"
+                      required
                       value={form.contact_number}
                       onChange={e => {
                         const value = e.target.value.replace(/\D/g, ''); // Allow only digits
@@ -1120,6 +1192,9 @@ export default function DealerListing() {
                   {/* <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="dealer@company.in" className={inputCls} /> */}
                   <input
                     type="email"
+                    name="email"
+                    data-label="Email"
+                    required
                     value={form.email}
                     onChange={e => {
                       const value = e.target.value;
@@ -1137,6 +1212,7 @@ export default function DealerListing() {
                   {/* <input value={form.gst_number} onChange={e => set('gst_number', e.target.value)} placeholder="29ABCDE1234F1Z5" className={inputCls} /> */}
                   <input
                     type="text"
+                    name="gst_number"
                     value={form.gst_number}
                     onChange={e => {
                       const value = e.target.value.toUpperCase();
@@ -1161,12 +1237,15 @@ export default function DealerListing() {
             </SectionCard>
 
             {/* Step 2: Registered Address */}
-            <SectionCard step={2} active={sec1} complete={sec2} title="Registered Address" subtitle="Used on invoices, contracts, and the dealer's certificate.">
+            <SectionCard step={2} active={sec1} complete={sec2} errors={sectionErrors[2]} title="Registered Address" subtitle="Used on invoices, contracts, and the dealer's certificate.">
               <div className="space-y-4">
                 <Field label="Address" required>
                   {/* <textarea value={form.address} onChange={e => set('address', e.target.value)} rows={2} placeholder="Street, area, landmark…"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                   <textarea
+                    name="address"
+                    data-label="Address"
+                    required
                     value={form.address}
                     onChange={e => {
                       const value = e.target.value;
@@ -1183,14 +1262,14 @@ export default function DealerListing() {
                 </Field>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Field label="State" required>
-                    <select value={form.state} onChange={e => set('state', e.target.value)}
+                    <select name="state" data-label="State" required value={form.state} onChange={e => set('state', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
                       <option value="">Select state…</option>
                       {Object.keys(statesDistricts).sort().map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </Field>
                   <Field label="District" required>
-                    <select value={form.district} onChange={e => set('district', e.target.value)} disabled={!form.state}
+                    <select name="district" data-label="District" required value={form.district} onChange={e => set('district', e.target.value)} disabled={!form.state}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50">
                       <option value="">Select district…</option>
                       {(statesDistricts[form.state] || []).map(d => <option key={d} value={d}>{d}</option>)}
@@ -1201,7 +1280,7 @@ export default function DealerListing() {
             </SectionCard>
 
             {/* Step 3: User Account */}
-            <SectionCard step={3} active={sec2} complete={sec3} title="Dealer User Account" subtitle="Login credentials for the dealer admin.">
+            <SectionCard step={3} active={sec2} complete={sec3} errors={sectionErrors[3]} title="Dealer User Account" subtitle="Login credentials for the dealer admin.">
               <div className="grid grid-cols-1 gap-4 md:gap-5 md:[grid-template-columns:160px_1fr_1fr]">
                 <Field label="Username" required>
                   <div className="flex gap-0">
@@ -1210,6 +1289,9 @@ export default function DealerListing() {
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                     <input
                       type="text"
+                      name="user_username"
+                      data-label="Username"
+                      required
                       value={form.user_username}
                       onChange={(e) => {
                         const value = e.target.value
@@ -1233,6 +1315,9 @@ export default function DealerListing() {
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                     <input
                       type="email"
+                      name="user_email"
+                      data-label="Login Email"
+                      required
                       value={form.user_email}
                       onChange={e => {
                         if (e.target.value.length <= 300) {
@@ -1253,6 +1338,9 @@ export default function DealerListing() {
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                     <input
                       type={showPassword ? 'text' : 'password'}
+                      name="user_password"
+                      data-label="Temporary Password"
+                      required
                       value={form.user_password}
                       onChange={e => {
                         const value = e.target.value;

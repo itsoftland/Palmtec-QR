@@ -11,9 +11,9 @@ import {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function SectionCard({ step, active = true, complete, title, subtitle, children }) {
+function SectionCard({ step, active = true, complete, title, subtitle, errors = [], children }) {
   return (
-    <div className={`rounded-2xl border mb-4 transition-all duration-200 ${complete ? 'border-emerald-200 bg-white' :
+    <div data-form-section={step} className={`rounded-2xl border mb-4 transition-all duration-200 ${complete ? 'border-emerald-200 bg-white' :
       active ? 'border-slate-200 bg-white shadow-sm' :
         'border-slate-200 bg-slate-50/60'
       }`}>
@@ -29,9 +29,14 @@ function SectionCard({ step, active = true, complete, title, subtitle, children 
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
       </div>
-      <div className={`px-6 py-5 ${!active && !complete ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+      <fieldset disabled={!active && !complete} className={`px-6 py-5 w-full min-w-0 border-0 ${!active && !complete ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+        {errors.length > 0 && (
+          <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            Complete the required fields: <strong>{errors.join(', ')}</strong>.
+          </div>
+        )}
         {children}
-      </div>
+      </fieldset>
     </div>
   );
 }
@@ -228,6 +233,8 @@ export default function CompanyListing() {
   // ── Sync modal state ─────────────────────────────────────────────────────
   const [syncModal, setSyncModal] = useState(null);   // null | { companyId, data }
   const [syncConfirming, setSyncConfirming] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
 
   // ── Dealer pool balance (fetched when dealer_admin opens create view) ────
   const [dealerPool, setDealerPool] = useState(null);
@@ -250,6 +257,7 @@ export default function CompanyListing() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [sectionErrors, setSectionErrors] = useState({});
 
   // ── Modal state (view / edit) ────────────────────────────────────────────
   const [modal, setModal] = useState(null);
@@ -296,6 +304,7 @@ export default function CompanyListing() {
     setImportId('');
     setImportError('');
     setImportLicense(null);
+    setSectionErrors({});
   };
 
   // ── Create form completeness ──────────────────────────────────────────────
@@ -400,6 +409,122 @@ export default function CompanyListing() {
     } finally { setSubmitting(false); }
   };
 
+  const handleCreateKeyDown = (e) => {
+    const field = e.target;
+    if (!(field instanceof HTMLElement) || !['INPUT', 'SELECT', 'TEXTAREA'].includes(field.tagName)) return;
+    if (field.tagName === 'TEXTAREA' || field.hasAttribute('readonly') || field.hasAttribute('disabled')) return;
+
+    const form = e.currentTarget;
+    const fields = Array.from(form.querySelectorAll('input, select, textarea')).filter(
+      element => !element.matches(':disabled') && !element.readOnly && element.type !== 'hidden'
+    );
+    const currentIndex = fields.indexOf(field);
+    if (currentIndex === -1) return;
+
+    if (e.key === 'Enter') {
+      if (!field.checkValidity()) {
+        e.preventDefault();
+        field.reportValidity();
+        return;
+      }
+
+      const allFields = Array.from(form.querySelectorAll('input, select, textarea')).filter(
+        element => element.type !== 'hidden'
+      );
+      const allCurrentIndex = allFields.indexOf(field);
+      const nextField = allFields.slice(allCurrentIndex + 1).find(
+        element => !element.matches(':disabled') && !element.readOnly
+      );
+      if (nextField) {
+        e.preventDefault();
+        nextField.focus();
+        return;
+      }
+
+      // The final field should behave like the form's submit button.
+      if (allCurrentIndex === allFields.length - 1) {
+        e.preventDefault();
+        form.requestSubmit();
+        return;
+      }
+
+      e.preventDefault();
+      const section = field.closest('[data-form-section]');
+      const sectionNumber = section?.dataset.formSection;
+      const requiredFields = section
+        ? Array.from(section.querySelectorAll('input, select, textarea')).filter(
+          element => !element.matches(':disabled') && element.required
+        )
+        : [];
+      const invalidFields = requiredFields.filter(element => !element.checkValidity());
+
+      if (invalidFields.length > 0) {
+        setSectionErrors(errors => ({
+          ...errors,
+          [sectionNumber]: invalidFields.map(element => element.dataset.label || element.name),
+        }));
+        return;
+      }
+
+      // The current change may enable the following section after React renders.
+      setSectionErrors(errors => ({ ...errors, [sectionNumber]: [] }));
+      requestAnimationFrame(() => {
+        const refreshedFields = Array.from(form.querySelectorAll('input, select, textarea')).filter(
+          element => element.type !== 'hidden'
+        );
+        const refreshedIndex = refreshedFields.indexOf(field);
+        refreshedFields.slice(refreshedIndex + 1).find(
+          element => !element.matches(':disabled') && !element.readOnly
+        )?.focus();
+      });
+      return;
+    }
+
+    // Preserve native select navigation and the number-field increment behavior.
+    if (field.tagName === 'SELECT' || e.defaultPrevented || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      return;
+    }
+
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && field instanceof HTMLInputElement) {
+      const caret = field.selectionStart;
+      const atBoundary = e.key === 'ArrowLeft' ? caret === 0 : caret === field.value.length;
+      if (!atBoundary) return;
+    }
+
+    const currentRect = field.getBoundingClientRect();
+    const currentCenterX = currentRect.left + currentRect.width / 2;
+    const currentCenterY = currentRect.top + currentRect.height / 2;
+    const candidates = fields
+      .filter(candidate => candidate !== field)
+      .map(candidate => {
+        const rect = candidate.getBoundingClientRect();
+        return {
+          candidate,
+          centerX: rect.left + rect.width / 2,
+          centerY: rect.top + rect.height / 2,
+        };
+      })
+      .filter(({ centerX, centerY }) => {
+        if (e.key === 'ArrowUp') return centerY < currentCenterY;
+        if (e.key === 'ArrowDown') return centerY > currentCenterY;
+        if (e.key === 'ArrowLeft') return centerX < currentCenterX;
+        return centerX > currentCenterX;
+      })
+      .sort((a, b) => {
+        const vertical = ['ArrowUp', 'ArrowDown'].includes(e.key);
+        const aPrimary = vertical ? Math.abs(a.centerY - currentCenterY) : Math.abs(a.centerX - currentCenterX);
+        const bPrimary = vertical ? Math.abs(b.centerY - currentCenterY) : Math.abs(b.centerX - currentCenterX);
+        const aSecondary = vertical ? Math.abs(a.centerX - currentCenterX) : Math.abs(a.centerY - currentCenterY);
+        const bSecondary = vertical ? Math.abs(b.centerX - currentCenterX) : Math.abs(b.centerY - currentCenterY);
+        return aPrimary - bPrimary || aSecondary - bSecondary;
+      });
+
+    if (candidates[0]) {
+      e.preventDefault();
+      candidates[0].candidate.focus();
+    }
+  };
+
   // ── License actions ──────────────────────────────────────────────────────
   const handleRegisterLicense = async (companyId) => {
     setRegisteringLicense(p => ({ ...p, [companyId]: true }));
@@ -465,14 +590,20 @@ export default function CompanyListing() {
   };
 
   const handlePermanentDelete = async (company) => {
-    const typed = window.prompt(
-      `This permanently deletes "${company.company_name}" and all its data. This cannot be undone.\n\nType the company name exactly to confirm:`
-    );
-    if (typed === null) return;
-    if (typed.trim() !== company.company_name) {
+    setDeleteConfirmation(company);
+    setDeleteConfirmationText('');
+  };
+
+  const confirmPermanentDelete = async () => {
+    if (!deleteConfirmation) return;
+    const company = deleteConfirmation;
+    const typed = deleteConfirmationText.trim();
+    if (typed !== company.company_name) {
       window.alert('Company name did not match. Deletion cancelled.');
       return;
     }
+    setDeleteConfirmation(null);
+    setDeleteConfirmationText('');
     setDeletingPermanent(p => ({ ...p, [company.id]: true }));
     try {
       const res = await api.delete(`${BASE_URL}/permanently-delete-company/${company.id}`, {
@@ -650,6 +781,7 @@ export default function CompanyListing() {
             <Search size={13} className="text-slate-400 shrink-0" />
             <input
               value={search}
+              maxLength={100}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search companies…"
               className="flex-1 text-sm bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
@@ -1151,6 +1283,57 @@ export default function CompanyListing() {
             );
           })()}
         </ModalWrapper>
+
+        <ModalWrapper
+          open={!!deleteConfirmation}
+          onClose={() => {
+            setDeleteConfirmation(null);
+            setDeleteConfirmationText('');
+          }}
+          title="Permanently Delete Company"
+          icon={Trash2}
+          width="max-w-lg"
+        >
+          {deleteConfirmation && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-700 select-text">
+                This permanently deletes <strong>{deleteConfirmation.company_name}</strong> and all its data.
+                This cannot be undone.
+              </p>
+              <p className="text-sm text-slate-600 select-text">
+                Type the company name exactly to confirm:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmationText}
+                onChange={e => setDeleteConfirmationText(e.target.value)}
+                placeholder={deleteConfirmation.company_name}
+                autoFocus
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300 bg-white"
+              />
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmation(null);
+                    setDeleteConfirmationText('');
+                  }}
+                  className="flex-1 inline-flex items-center justify-center h-9 px-4 text-sm rounded-lg font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPermanentDelete}
+                  disabled={deleteConfirmationText.trim() !== deleteConfirmation.company_name}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={13} /> Delete Permanently
+                </button>
+              </div>
+            </div>
+          )}
+        </ModalWrapper>
       </div>
     );
   }
@@ -1267,13 +1450,13 @@ export default function CompanyListing() {
 
           {/* Form steps */}
           {(createMode === 'new' || (createMode === 'import' && importStep === 'confirm')) && (
-            <form onSubmit={handleCreateSubmit}>
+            <form onSubmit={handleCreateSubmit} onKeyDown={handleCreateKeyDown}>
               {/* Step 1: Company Identity */}
-              <SectionCard step={1} active complete={sec1} title="Company Identity" subtitle="Core details used to identify and contact this client.">
+              <SectionCard step={1} active complete={sec1} errors={sectionErrors[1]} title="Company Identity" subtitle="Core details used to identify and contact this client.">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Field label="Company Name" required>
                     {/* <input value={form.company_name} onChange={e => set('company_name', e.target.value)} placeholder="Acme Transport Pvt Ltd" className={inputCls} /> */}
-                    <input type="text" value={form.company_name} onChange={(e) => {
+                    <input type="text" name="company_name" data-label="Company Name" value={form.company_name} onChange={(e) => {
                       if (e.target.value.length <= 20) {
                         set('company_name', e.target.value);
                       }
@@ -1289,6 +1472,8 @@ export default function CompanyListing() {
                     {/* <input type="email" value={form.company_email} onChange={e => set('company_email', e.target.value)} placeholder="ops@acme.in" className={inputCls} /> */}
                     <input
                       type="email"
+                      name="company_email"
+                      data-label="Company Email"
                       value={form.company_email}
                       onChange={(e) => {
                         if (e.target.value.length <= 300) {
@@ -1306,6 +1491,8 @@ export default function CompanyListing() {
                     {/* <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)} placeholder="Jane Doe" className={inputCls} /> */}
                     <input
                       type="text"
+                      name="contact_person"
+                      data-label="Contact Person"
                       value={form.contact_person}
                       onChange={(e) => {
                         if (e.target.value.length <= 20) {
@@ -1326,6 +1513,8 @@ export default function CompanyListing() {
                         className="flex-1 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                       <input
                         type="tel"
+                        name="contact_number"
+                        data-label="Contact Number"
                         value={form.contact_number}
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, ""); // Allow only digits
@@ -1346,6 +1535,7 @@ export default function CompanyListing() {
                     {/* <input value={form.gst_number} onChange={e => set('gst_number', e.target.value)} placeholder="29ABCDE1234F1Z5" className={inputCls} /> */}
                     <input
                       type="text"
+                      name="gst_number"
                       value={form.gst_number}
                       onChange={(e) => {
                         const value = e.target.value.toUpperCase();
@@ -1363,6 +1553,7 @@ export default function CompanyListing() {
                   <Field label="Payment Aggregator Merchant ID" hint="Optional" span={1}>
                     {/* <input value={form.aggregator_merchant_id} onChange={e => set('aggregator_merchant_id', e.target.value)} placeholder="HDFC000024839241" className={inputCls} /> */}
                     <input
+                      name="aggregator_merchant_id"
                       value={form.aggregator_merchant_id}
                       minLength={3}
                       maxLength={20}
@@ -1375,12 +1566,14 @@ export default function CompanyListing() {
               </SectionCard>
 
               {/* Step 2: Address */}
-              <SectionCard step={2} active={sec1} complete={sec2} title="Registered Address" subtitle="Primary location details.">
+              <SectionCard step={2} active={sec1} complete={sec2} errors={sectionErrors[2]} title="Registered Address" subtitle="Primary location details.">
                 <div className="space-y-4">
                   <Field label="Address" required>
                     {/* <textarea value={form.address} onChange={e => set('address', e.target.value)} rows={2} placeholder="Street, area, landmark…"
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                     <textarea
+                      name="address"
+                      data-label="Address"
                       value={form.address}
                       onChange={(e) => {
                         if (e.target.value.length <= 400) {
@@ -1398,10 +1591,10 @@ export default function CompanyListing() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Field label="State" required>
                       {isExecutive ? (
-                        <input value={executiveState} readOnly
+                        <input name="state" data-label="State" value={executiveState} readOnly required
                           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600 cursor-not-allowed" />
                       ) : (
-                        <select value={form.state} onChange={e => set('state', e.target.value)}
+                        <select name="state" data-label="State" required value={form.state} onChange={e => set('state', e.target.value)}
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white">
                           <option value="">Select state…</option>
                           {Object.keys(statesDistricts).sort().map(s => <option key={s} value={s}>{s}</option>)}
@@ -1409,7 +1602,7 @@ export default function CompanyListing() {
                       )}
                     </Field>
                     <Field label="District" required>
-                      <select value={form.district} onChange={e => set('district', e.target.value)} disabled={!form.state}
+                      <select name="district" data-label="District" required value={form.district} onChange={e => set('district', e.target.value)} disabled={!form.state}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50">
                         <option value="">Select district…</option>
                         {(statesDistricts[form.state] || []).map(d => <option key={d} value={d}>{d}</option>)}
@@ -1420,7 +1613,7 @@ export default function CompanyListing() {
               </SectionCard>
 
               {/* Step 3: User Account */}
-              <SectionCard step={3} active={sec2} complete={sec3} title="Admin User Account" subtitle="Login credentials for the company admin.">
+              <SectionCard step={3} active={sec2} complete={sec3} errors={sectionErrors[3]} title="Admin User Account" subtitle="Login credentials for the company admin.">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:items-end">
                   <Field label="Username" required>
                     <div className="flex gap-0">
@@ -1429,6 +1622,8 @@ export default function CompanyListing() {
                         className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                       <input
                         type="text"
+                        name="user_username"
+                        data-label="Username"
                         value={form.user_username}
                         onChange={(e) => {
                           const value = e.target.value
@@ -1456,6 +1651,8 @@ export default function CompanyListing() {
                         className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white" /> */}
                       <input
                         type="email"
+                        name="user_email"
+                        data-label="Login Email"
                         value={form.user_email}
                         onChange={(e) => {
                           if (e.target.value.length <= 300) {
@@ -1478,6 +1675,8 @@ export default function CompanyListing() {
                       <div className="relative flex-1 min-w-0">
                         <input
                           type={showPassword ? 'text' : 'password'}
+                          name="user_password"
+                          data-label="Password"
                           value={form.user_password}
                           onChange={(e) => {
                             if (e.target.value.length <= 20) {
@@ -1510,7 +1709,7 @@ export default function CompanyListing() {
 
               {/* Step 4: Pool Allocation — dealer_admin only */}
               {isDealerAdmin && createMode === 'new' && (
-                <SectionCard step={4} active={sec3} complete={sec4} title="Pool Allocation" subtitle="Deduct from your license pool — cannot exceed your remaining balance.">
+                <SectionCard step={4} active={sec3} complete={sec4} errors={sectionErrors[4]} title="Pool Allocation" subtitle="Deduct from your license pool — cannot exceed your remaining balance.">
 
                   {/* Pool balance summary */}
                   {poolLoading ? (
@@ -1558,6 +1757,9 @@ export default function CompanyListing() {
 
                       <input
                         type="number"
+                        name="palmtec_count"
+                        data-label="ETM Devices"
+                        required
                         min="0"
                         max="999"
                         value={form.palmtec_count}
@@ -1639,6 +1841,9 @@ export default function CompanyListing() {
 
                       <input
                         type="number"
+                        name="total_user_count"
+                        data-label="Total Users"
+                        required
                         min="1"
                         max="999"
                         value={form.total_user_count}
@@ -1741,8 +1946,10 @@ export default function CompanyListing() {
 
                       <input
                         type="number"
+                        name="premium_user_count"
                         min="0"
                         max="999"
+                        required
                         value={form.premium_user_count}
                         placeholder="0"
                         onChange={e => {
@@ -1843,8 +2050,10 @@ export default function CompanyListing() {
 
                       <input
                         type="number"
+                        name="intermediate_user_count"
                         min="0"
                         max="999"
+                        required
                         value={form.intermediate_user_count}
                         placeholder="0"
                         onChange={e => {

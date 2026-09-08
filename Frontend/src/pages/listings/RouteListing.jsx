@@ -1141,8 +1141,6 @@ export default function RouteListing() {
                                 <input
                                   type="number"
                                   value={idx === 0 ? 0 : fare}
-                                  min="0"
-                                  max="999"
                                   disabled={idx === 0}
                                   onChange={e => {
                                     let val = parseInt(e.target.value, 10);
@@ -1152,19 +1150,26 @@ export default function RouteListing() {
                                       return;
                                     }
 
-                                    if (val > 999) val = 999;
+                                    const prev = Number(fare) || 0;
+
+                                    if (val > 999) {
+                                      val = prev >= 999 ? 0 : 999;
+                                    } else if (val < 0) {
+                                      val = prev <= 0 ? 999 : 0;
+                                    }
 
                                     updateWizardFareList(idx, String(val));
                                   }}
                                   onKeyDown={e => {
-                                    if (e.key === "ArrowUp" && Number(fare) >= 999) {
-                                      e.preventDefault();
-                                      updateWizardFareList(idx, "0");
-                                    }
+                                    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
 
-                                    if (e.key === "ArrowDown" && Number(fare) <= 0) {
-                                      e.preventDefault();
-                                      updateWizardFareList(idx, "999");
+                                    e.preventDefault();
+                                    const current = Number(fare) || 0;
+
+                                    if (e.key === "ArrowUp") {
+                                      updateWizardFareList(idx, current >= 999 ? "0" : String(current + 1));
+                                    } else {
+                                      updateWizardFareList(idx, current <= 0 ? "999" : String(current - 1));
                                     }
                                   }}
                                   onBlur={e => {
@@ -1223,17 +1228,23 @@ export default function RouteListing() {
                                       <input
                                         type="number"
                                         value={row[cIdx]}
-                                        min="0"
-                                        max="999"
                                         onChange={e => {
-                                          const value = e.target.value;
+                                          let val = parseInt(e.target.value, 10);
 
-                                          if (parseFloat(value) > 999) {
-                                            updateWizardFareMatrix(rIdx, cIdx, '999');
+                                          if (isNaN(val)) {
+                                            updateWizardFareMatrix(rIdx, cIdx, '');
                                             return;
                                           }
 
-                                          updateWizardFareMatrix(rIdx, cIdx, value);
+                                          const prev = parseInt(row[cIdx], 10) || 0;
+
+                                          if (val > 999) {
+                                            val = prev >= 999 ? 0 : 999;
+                                          } else if (val < 0) {
+                                            val = prev <= 0 ? 999 : 0;
+                                          }
+
+                                          updateWizardFareMatrix(rIdx, cIdx, String(val));
                                         }}
                                         onKeyDown={e => {
                                           const currentValue = parseInt(row[cIdx], 10) || 0;

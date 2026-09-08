@@ -161,7 +161,8 @@ export default function EmployeeCombined() {
   const openTypeView = (t) => { setTypeFormData(t); setEditingType(t); setTypeModalMode('view'); setTypeModalOpen(true); };
   const openTypeEdit = (t) => { setTypeFormData(t); setEditingType(t); setTypeModalMode('edit'); setTypeModalOpen(true); };
 
-  const handleTypeSubmit = async () => {
+  const handleTypeSubmit = async (e) => {
+    e?.preventDefault();
     setTypeSubmitting(true);
     try {
       const res = typeModalMode === 'edit'
@@ -587,7 +588,7 @@ export default function EmployeeCombined() {
                 {getTypeModalTitle()}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-2">
+            <form className="space-y-4 mt-2" onSubmit={handleTypeSubmit}>
               <div className="space-y-1.5">
                 <Label className="text-slate-700">Type Name *</Label>
                 {/* <Input
@@ -611,20 +612,21 @@ export default function EmployeeCombined() {
                   placeholder="e.g. Driver"
                   minLength={3}
                   maxLength={20}
+                  required={!typeIsReadOnly}
                   className={typeIsReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                 />
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button variant="outline" onClick={() => setTypeModalOpen(false)} className="text-slate-600">
+                <Button type="button" variant="outline" onClick={() => setTypeModalOpen(false)} className="text-slate-600">
                   {typeIsReadOnly ? 'Close' : 'Cancel'}
                 </Button>
                 {!typeIsReadOnly && (
-                  <Button onClick={handleTypeSubmit} disabled={typeSubmitting} className="bg-slate-900 hover:bg-slate-700 text-white">
+                  <Button type="submit" disabled={typeSubmitting} className="bg-slate-900 hover:bg-slate-700 text-white">
                     {typeSubmitting ? 'Saving...' : typeModalMode === 'edit' ? 'Update' : 'Save'}
                   </Button>
                 )}
               </div>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
 

@@ -72,6 +72,25 @@ export default function DepotListing() {
 
   const closeModal = () => { setModalOpen(false); setSelected(null); setFormError(''); };
 
+  const handleFormKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input')) return;
+
+    const form = e.currentTarget;
+    const inputs = Array.from(form.querySelectorAll('input')).filter(
+      input => input.type !== 'hidden' && !input.matches(':disabled') && !input.readOnly
+    );
+    const currentIndex = inputs.indexOf(e.target);
+    if (currentIndex === -1) return;
+
+    const nextInput = inputs[currentIndex + 1];
+    e.preventDefault();
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      form.requestSubmit();
+    }
+  };
+
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -278,7 +297,7 @@ export default function DepotListing() {
           </div>
         ) : (
           /* Create / Edit form */
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
             {formError && (
               <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2.5 text-xs text-rose-700">
                 {formError}

@@ -281,7 +281,7 @@ export default function AuditLogPage() {
               <thead className="bg-slate-50/60 border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Timestamp</th>
-                  <th className="px-4 py-3 font-semibold">Actor</th>
+                  {/* <th className="px-4 py-3 font-semibold">Actor</th> */}
                   <th className="px-4 py-3 font-semibold">Action</th>
                   <th className="px-4 py-3 font-semibold">Model</th>
                   <th className="px-4 py-3 font-semibold">Target</th>
@@ -305,9 +305,9 @@ export default function AuditLogPage() {
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <p className="text-xs text-slate-700 font-medium">{fmtDatetime(log.timestamp)}</p>
                           </td>
-                          <td className="px-4 py-3.5">
+                          {/* <td className="px-4 py-3.5">
                             <span className="text-sm text-slate-700 font-medium">{log.actor_username_snapshot || '—'}</span>
-                          </td>
+                          </td> */}
                           <td className="px-4 py-3.5">
                             <ActionBadge action={log.action} />
                           </td>

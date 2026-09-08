@@ -14,6 +14,25 @@ import {
 import api, { BASE_URL, cancelAllPendingRequests } from "../assets/js/axiosConfig";
 import cacheManager from "../assets/js/reportCache";
 
+function handleSidebarNavigation(event, onClose) {
+  onClose?.();
+
+  // Keep browser behaviors such as Ctrl/Cmd-click and middle-click unchanged.
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  window.location.assign(event.currentTarget.href);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-LINK
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,7 +40,7 @@ function SubLink({ to, icon: Icon, label, onClose }) {
   return (
     <NavLink
       to={to}
-      onClick={onClose}
+      onClick={(event) => handleSidebarNavigation(event, onClose)}
       className={({ isActive }) =>
         `flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors duration-150 ${
           isActive
@@ -45,7 +64,7 @@ function NavItem({ to, icon: Icon, label, isCollapsed, onClose, end }) {
       <NavLink
         to={to}
         end={end}
-        onClick={onClose}
+        onClick={(event) => handleSidebarNavigation(event, onClose)}
         className={({ isActive }) =>
           `flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
             isActive

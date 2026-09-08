@@ -56,6 +56,25 @@ export default function CurrencyListing() {
   const openCreate = ()  => { setSelected(null); setForm(emptyForm);  setErrors({}); setModalMode('create'); setModalOpen(true); };
   const closeModal = ()  => { setModalOpen(false); setErrors({}); };
 
+  const handleFormKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input')) return;
+
+    const form = e.currentTarget;
+    const inputs = Array.from(form.querySelectorAll('input')).filter(
+      input => input.type !== 'hidden' && !input.matches(':disabled') && !input.readOnly
+    );
+    const currentIndex = inputs.indexOf(e.target);
+    if (currentIndex === -1) return;
+
+    const nextInput = inputs[currentIndex + 1];
+    e.preventDefault();
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      form.requestSubmit();
+    }
+  };
+
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -217,7 +236,7 @@ export default function CurrencyListing() {
             </div>
           </div>
         ) : (
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
             <FormField label="Currency Code" required hint="3-letter ISO code (e.g. INR, USD)" error={errors.currency}>
               <DesignInput
                 value={form.currency}

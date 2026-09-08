@@ -201,6 +201,24 @@ function SaveButton({ onSave, saving, loading, disabled, bottom = false }) {
   );
 }
 
+function handleSettingsFormKeyDown(e, onSubmit) {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input, select, textarea')) return;
+
+  const controls = Array.from(e.currentTarget.querySelectorAll('input, select, textarea')).filter(
+    control => control.type !== 'hidden' && control.type !== 'checkbox' && !control.matches(':disabled') && !control.readOnly
+  );
+  const currentIndex = controls.indexOf(e.target);
+  if (currentIndex === -1) return;
+
+  e.preventDefault();
+  const nextControl = controls[currentIndex + 1];
+  if (nextControl) {
+    nextControl.focus();
+  } else {
+    onSubmit();
+  }
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const EMPTY_SET = new Set();
@@ -525,7 +543,7 @@ function CompanySettingsTab({ setHeaderAction }) {
   useEffect(() => () => setHeaderAction(null), [setHeaderAction]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={e => handleSettingsFormKeyDown(e, handleSave)}>
       <SettingsFormFields formData={formData} onChange={handleChange} loading={loading} isDevice={false} fieldErrors={fieldErrors} />
       <div className="flex justify-end pt-2">
         <SaveButton onSave={handleSave} saving={saving} loading={loading} disabled={false} bottom />
@@ -642,7 +660,7 @@ function ProfilesTab({ setHeaderAction }) {
   // Profile editor panel (create or edit)
   if (editingId !== null) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" onKeyDown={e => handleSettingsFormKeyDown(e, handleSave)}>
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-800">
             {editingId === 'new' ? 'New Profile' : `Edit: ${formData.name}`}

@@ -166,7 +166,8 @@ export default function VehicleCombined() {
   const openTypeView = (t) => { setTypeFormData(t); setEditingType(t); setTypeModalMode('view'); setTypeModalOpen(true); };
   const openTypeEdit = (t) => { setTypeFormData(t); setEditingType(t); setTypeModalMode('edit'); setTypeModalOpen(true); };
 
-  const handleTypeSubmit = async () => {
+  const handleTypeSubmit = async (e) => {
+    e?.preventDefault();
     setTypeSubmitting(true);
     try {
       const res = typeModalMode === 'edit'
@@ -185,6 +186,30 @@ export default function VehicleCombined() {
       window.alert((data.errors ? Object.values(data.errors)[0][0] : data.message) || 'Validation failed');
     } finally {
       setTypeSubmitting(false);
+    }
+  };
+
+  const handleTypeFormKeyDown = (e) => {
+    if (typeModalMode !== 'create' || e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input')) return;
+
+    const inputs = Array.from(e.currentTarget.querySelectorAll('input')).filter(
+      input => input.type !== 'hidden' && !input.matches(':disabled') && !input.readOnly
+    );
+    const currentIndex = inputs.indexOf(e.target);
+    if (currentIndex === -1) return;
+
+    if (!e.target.checkValidity()) {
+      e.preventDefault();
+      e.target.reportValidity();
+      return;
+    }
+
+    e.preventDefault();
+    const nextInput = inputs[currentIndex + 1];
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      e.currentTarget.requestSubmit();
     }
   };
 
@@ -610,7 +635,11 @@ export default function VehicleCombined() {
                 {getTypeModalTitle()}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-2">
+            <form
+              className="space-y-4 mt-2"
+              onSubmit={handleTypeSubmit}
+              onKeyDown={handleTypeFormKeyDown}
+            >
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-slate-700">Type Code *</Label>
@@ -631,6 +660,7 @@ export default function VehicleCombined() {
                     placeholder="e.g. BT001"
                     minLength={3}
                     maxLength={15}
+                    required={!typeIsReadOnly}
                     className={typeIsReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
                 </div>
@@ -653,6 +683,7 @@ export default function VehicleCombined() {
                     placeholder="e.g. Luxury Coach"
                     minLength={3}
                     maxLength={20}
+                    required={!typeIsReadOnly}
                     className={typeIsReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
                 </div>
@@ -668,16 +699,16 @@ export default function VehicleCombined() {
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button variant="outline" onClick={() => setTypeModalOpen(false)} className="text-slate-600">
+                <Button type="button" variant="outline" onClick={() => setTypeModalOpen(false)} className="text-slate-600">
                   {typeIsReadOnly ? 'Close' : 'Cancel'}
                 </Button>
                 {!typeIsReadOnly && (
-                  <Button onClick={handleTypeSubmit} disabled={typeSubmitting} className="bg-slate-900 hover:bg-slate-700 text-white">
+                  <Button type="submit" disabled={typeSubmitting} className="bg-slate-900 hover:bg-slate-700 text-white">
                     {typeSubmitting ? 'Saving...' : typeModalMode === 'edit' ? 'Update' : 'Save'}
                   </Button>
                 )}
               </div>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
 

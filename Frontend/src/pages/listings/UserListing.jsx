@@ -200,6 +200,7 @@ export default function UserListing() {
   const [confirmPw, setConfirmPw] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [formErrors, setFormErrors] = useState([]);
 
   const navigate = useNavigate();
 
@@ -330,6 +331,7 @@ export default function UserListing() {
     setSelectedUser(null);
     const defaultTier = availableTiers[0]?.value || 'basic';
     setFormData({ username: '', email: '', role: defaultRole, company_id: '', dealer_id: '', password: '', state: '', tier: defaultTier });
+    setFormErrors([]);
     setModalOpen(true);
   };
 
@@ -339,6 +341,7 @@ export default function UserListing() {
     setModalMode('edit');
     setSelectedUser(u);
     setFormData({ username: u.username, email: u.email, role: u.role, company_id: u.company || '', dealer_id: u.dealer || '', password: '', state: u.state || '', tier: u.tier || 'basic' });
+    setFormErrors([]);
     setModalOpen(true);
   };
 
@@ -348,11 +351,12 @@ export default function UserListing() {
     setPwModalOpen(true);
   };
 
-  const closeModal = () => { setModalOpen(false); setSelectedUser(null); };
+  const closeModal = () => { setModalOpen(false); setSelectedUser(null); setFormErrors([]); };
 
   // ── Form handlers ────────────────────────────────────────────────────────────
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    setFormErrors([]);
     setFormData(prev => {
       const next = { ...prev, [name]: value };
       if (name === 'role') {
@@ -364,6 +368,42 @@ export default function UserListing() {
       }
       return next;
     });
+  };
+
+  const handleFormInvalid = (e) => {
+    const controls = Array.from(e.currentTarget.querySelectorAll('input, select, textarea'));
+    setFormErrors(controls
+      .filter(control => control.required && !control.disabled && !control.checkValidity())
+      .map(control => control.dataset.label || control.name));
+  };
+
+  const handleFormKeyDown = (e) => {
+    if (modalMode !== 'create' || e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input, select')) return;
+    if (e.target.name === 'password') return;
+
+    const form = e.currentTarget;
+    const controls = Array.from(form.querySelectorAll('input, select, textarea')).filter(
+      control => control.type !== 'hidden' && !control.matches(':disabled') && !control.readOnly
+    );
+    const currentIndex = controls.indexOf(e.target);
+    if (currentIndex === -1) return;
+
+    const nextControl = controls[currentIndex + 1];
+    if (nextControl) {
+      e.preventDefault();
+      // Role changes can render a new dependent selector (company, dealer, or state).
+      requestAnimationFrame(() => {
+        const refreshedControls = Array.from(form.querySelectorAll('input, select, textarea')).filter(
+          control => control.type !== 'hidden' && !control.matches(':disabled') && !control.readOnly
+        );
+        const refreshedIndex = refreshedControls.indexOf(e.target);
+        refreshedControls[refreshedIndex + 1]?.focus();
+      });
+      return;
+    }
+
+    e.preventDefault();
+    form.requestSubmit();
   };
 
   const handleSubmit = async (e) => {
@@ -409,6 +449,16 @@ export default function UserListing() {
       setSubmitting(false);
     }
   };
+
+  const createFormValid = modalMode !== 'create' || (
+    formData.username.trim().length >= 3 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()) &&
+    formData.password.length >= 8 &&
+    (!(!isCompanyAdmin && formData.role === 'company_admin') || !!formData.company_id) &&
+    (!(isSuperadmin && formData.role === 'dealer_admin') || !!formData.dealer_id) &&
+    (!(formData.role === 'executive') || !!formData.state) &&
+    (!((formData.role === 'company_user') || isCompanyAdmin) || !!formData.tier)
+  );
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -521,6 +571,7 @@ export default function UserListing() {
           <input
             type="text"
             value={search}
+            maxLength={50}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search users…"
             className="w-full h-7 pl-8 pr-2 rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
@@ -810,7 +861,12 @@ export default function UserListing() {
         title={modalMode === 'edit' ? 'Edit User' : 'Create User'}
         icon={modalMode === 'edit' ? Edit : Plus}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} onInvalidCapture={handleFormInvalid} className="space-y-4">
+          {formErrors.length > 0 && (
+            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              Complete the required fields: <strong>{formErrors.join(', ')}</strong>.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-700 flex items-center gap-1">
@@ -819,6 +875,7 @@ export default function UserListing() {
               {/* <input
                 type="text"
                 name="username"
+                data-label="Username"
                 value={formData.username}
                 onChange={handleInputChange}
                 required
@@ -845,6 +902,7 @@ export default function UserListing() {
               {/* <input
                 type="email"
                 name="email"
+                data-label="Email"
                 value={formData.email}
                 onChange={handleInputChange}
                 required
@@ -874,6 +932,7 @@ export default function UserListing() {
                 </label>
                 <select
                   name="role"
+                  data-label="Role"
                   value={formData.role}
                   onChange={handleInputChange}
                   required
@@ -892,6 +951,7 @@ export default function UserListing() {
                 </label>
                 <select
                   name="tier"
+                  data-label="Tier"
                   value={formData.tier}
                   onChange={handleInputChange}
                   required
@@ -910,6 +970,7 @@ export default function UserListing() {
                 </label>
                 <select
                   name="state"
+                  data-label="State"
                   value={formData.state}
                   onChange={handleInputChange}
                   required
@@ -929,6 +990,7 @@ export default function UserListing() {
                 </label>
                 <select
                   name="dealer_id"
+                  data-label="Dealer"
                   value={formData.dealer_id}
                   onChange={handleInputChange}
                   required
@@ -948,6 +1010,7 @@ export default function UserListing() {
                 </label>
                 <select
                   name="company_id"
+                  data-label="Company"
                   value={formData.company_id}
                   onChange={handleInputChange}
                   required
@@ -983,6 +1046,7 @@ export default function UserListing() {
                 <input
                   type={showPw ? 'text' : 'password'}
                   name="password"
+                  data-label="Password"
                   value={formData.password}
                   onChange={handleInputChange}
                   required
@@ -1019,7 +1083,7 @@ export default function UserListing() {
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !createFormValid}
               className="inline-flex items-center gap-1.5 h-9 px-4 text-sm rounded-lg font-medium bg-slate-900 hover:bg-slate-700 text-white cursor-pointer transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting
