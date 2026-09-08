@@ -200,6 +200,7 @@ urlpatterns = [
     path('masterdata/currencies', settings_views.get_currencies),
     path('masterdata/currencies/create', settings_views.create_currency),
     path('masterdata/currencies/update/<int:pk>', settings_views.update_currency),
+    path('masterdata/currencies/permanently-delete/<int:pk>', settings_views.permanently_delete_currency),
     path('masterdata/settings', settings_views.get_settings),
     path('masterdata/device-settings/devices', settings_views.list_company_devices),
     path('masterdata/settings-profiles', settings_views.list_profiles),

@@ -63,6 +63,28 @@ def update_currency(request, pk):
     return Response({'message': 'Validation failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['DELETE'])
+def permanently_delete_currency(request, pk):
+    _user, company = _get_authenticated_company_admin(request)
+
+    obj, err = _get_object_or_404(Currency, pk, company)
+    if err:
+        return err
+
+    currency_code = obj.currency
+    obj.delete()
+    logger.warning(
+        "Currency permanently deleted: %s (ID: %s, company: %s)",
+        currency_code,
+        pk,
+        company.id,
+    )
+    return Response(
+        {'message': 'Currency permanently deleted'},
+        status=status.HTTP_200_OK,
+    )
+
+
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'PUT'])

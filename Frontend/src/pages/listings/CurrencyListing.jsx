@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Coins, Plus, Eye, Pencil, Search, X } from 'lucide-react';
+import { Coins, Plus, Eye, Pencil, Trash2, Search, X } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import api, { BASE_URL } from '../../assets/js/axiosConfig';
 import {
@@ -16,6 +16,7 @@ export default function CurrencyListing() {
   const [modalMode, setModalMode]   = useState('view');
   const [selected, setSelected]     = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const PER_PAGE = 10;
 
   const emptyForm = { currency: '', country: '' };
@@ -55,6 +56,21 @@ export default function CurrencyListing() {
   const openEdit   = (c) => { setSelected(c); setForm({ currency: c.currency, country: c.country }); setErrors({}); setModalMode('edit');   setModalOpen(true); };
   const openCreate = ()  => { setSelected(null); setForm(emptyForm);  setErrors({}); setModalMode('create'); setModalOpen(true); };
   const closeModal = ()  => { setModalOpen(false); setErrors({}); };
+
+  const handlePermanentDelete = async (currency) => {
+    if (!window.confirm(`Permanently delete ${currency.currency} - ${currency.country}? This cannot be undone.`)) return;
+
+    setDeletingId(currency.id);
+    try {
+      await api.delete(`${BASE_URL}/masterdata/currencies/permanently-delete/${currency.id}`);
+      await fetchCurrencies();
+    } catch (err) {
+      const message = err.response?.data?.message || 'Unable to permanently delete currency.';
+      window.alert(message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleFormKeyDown = (e) => {
     if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input')) return;
@@ -193,6 +209,11 @@ export default function CurrencyListing() {
                       <button onClick={() => openEdit(c)} title="Edit"
                         className="p-2 rounded-md bg-slate-900 text-white hover:bg-slate-700 transition-colors cursor-pointer">
                         <Pencil size={14} />
+                      </button>
+                      <button onClick={() => handlePermanentDelete(c)} title="Permanently delete" aria-label={`Permanently delete ${c.currency}`}
+                        disabled={deletingId === c.id}
+                        className="p-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer">
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>
