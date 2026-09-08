@@ -93,3 +93,39 @@ def delete_depot(request,pk):
     else:
         depot.delete()
         return Response({"message": "Depot successfully deleted"}, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def permanently_delete_depot(request, pk):
+    user = request.user
+
+    try:
+        depot = Depot.objects.get(pk=pk, company=user.company)
+    except Depot.DoesNotExist:
+        logger.error(f"No Depot found with ID under the user's company: {pk}")
+        return Response({"message": "Depot not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    mapped_routes = RouteDepot.objects.filter(depot=depot).select_related('route')
+    if mapped_routes.exists():
+        route_names = [
+            {"id": route_depot.route.id, "route_code": route_depot.route.route_code}
+            for route_depot in mapped_routes
+        ]
+        return Response(
+            {
+                "message": "Depot is actively mapped to a route. Remove the route mapping before permanent deletion.",
+                "routes": route_names,
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    depot_name = depot.depot_name
+    depot.delete()
+    logger.warning(f"Depot permanently deleted: {depot_name} (ID: {pk})")
+    return Response({"message": "Depot permanently deleted"}, status=status.HTTP_200_OK)
+
+
+
+
+    

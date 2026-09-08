@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Warehouse, Plus, Eye, Pencil, Search, X, Route as RouteIcon, ArrowRight, Info } from 'lucide-react';
+import { Warehouse, Plus, Eye, Pencil, Trash2, Search, X, Route as RouteIcon, ArrowRight, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import api, { BASE_URL } from '../../assets/js/axiosConfig';
 import {
@@ -15,6 +15,7 @@ export default function DepotListing() {
   const [modalMode, setModalMode]   = useState('view'); // 'view' | 'edit' | 'create'
   const [selected, setSelected]     = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [formError, setFormError]   = useState('');
 
   const emptyForm = { depot_code: '', depot_name: '', address: '' };
@@ -71,6 +72,26 @@ export default function DepotListing() {
   };
 
   const closeModal = () => { setModalOpen(false); setSelected(null); setFormError(''); };
+
+  const handlePermanentDelete = async (depot) => {
+    if (!window.confirm(`Permanently delete depot "${depot.depot_name}"? This cannot be undone.`)) return;
+
+    setDeletingId(depot.id);
+    try {
+      await api.delete(`${BASE_URL}/permanently-delete-depot/${depot.id}`);
+      await fetchDepots();
+    } catch (err) {
+      const data = err.response?.data;
+      const mappedRoutes = data?.routes?.map(route => route.route_code).join(', ');
+      window.alert(
+        [data?.message || 'Unable to permanently delete depot.', mappedRoutes && `Mapped routes: ${mappedRoutes}`]
+          .filter(Boolean)
+          .join('\n')
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleFormKeyDown = (e) => {
     if (e.key !== 'Enter' || e.shiftKey || e.isComposing || !e.target.matches('input')) return;
@@ -229,6 +250,11 @@ export default function DepotListing() {
                       <button onClick={() => openEdit(d)} title="Edit"
                         className="p-2 rounded-md bg-slate-900 text-white hover:bg-slate-700 transition-colors cursor-pointer">
                         <Pencil size={14} />
+                      </button>
+                      <button onClick={() => handlePermanentDelete(d)} title="Permanently delete" aria-label={`Permanently delete ${d.depot_name}`}
+                        disabled={deletingId === d.id}
+                        className="p-2 rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer">
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>

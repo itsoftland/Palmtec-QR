@@ -71,6 +71,7 @@ urlpatterns = [
     path('create-depot', depot_views.create_depot, name='create_depot'),
     path('update-depot-details/<int:pk>', depot_views.update_depot_details, name='update_depot_details'),
     path('delete-depoteva/<int:pk>', depot_views.delete_depot, name='delete_depot'),
+    path('permanently-delete-depot/<int:pk>', depot_views.permanently_delete_depot, name='permanently_delete_depot'),
 
     # palmtec initial setup data
     path('getEtmSetupDetails', setup_data_views.get_etm_intial_data),
