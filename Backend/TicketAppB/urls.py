@@ -40,6 +40,7 @@ urlpatterns = [
     path('users/<int:user_id>/toggle-active',    user_views.toggle_user_active,   name='toggle_user_active'),
     path('users/capacity',                       user_views.user_capacity,         name='user_capacity'),
     path('change_user_password/<int:user_id>',   user_views.change_user_password,  name='change_user_password'),
+    path('delete_user/<int:user_id>',            user_views.delete_user,           name='delete_user'),
 
     # session management + device approvals (company_admin)
     path('sessions',                                   session_views.list_sessions,             name='list_sessions'),

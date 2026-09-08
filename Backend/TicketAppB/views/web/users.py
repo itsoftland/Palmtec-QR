@@ -532,6 +532,61 @@ def toggle_user_active(request, user_id):
     }, status=status.HTTP_200_OK)
 
 
+# ── Delete user ───────────────────────────────────────────────────────────────
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def delete_user(request, user_id):
+    """
+    Hard-delete a user. Superadmin (any user) or company_admin (own
+    company_users only).
+
+    All FKs referencing CustomUser (created_by, actor, etc.) are SET_NULL,
+    so this does not cascade-delete unrelated records. Active sessions for
+    the target are killed before the row is removed.
+    """
+    requester = request.user
+
+    try:
+        target = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response({'error': f'User {user_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # ── Authorization ─────────────────────────────────────────────────────────
+    if _is_superadmin(requester):
+        if target.role == UserRole.SUPERADMIN:
+            return Response({'error': 'Cannot delete another superadmin.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif _is_company_admin(requester):
+        if target.role != UserRole.COMPANY_USER or target.company_id != requester.company_id:
+            return Response({'error': 'Not authorized to delete this user.'}, status=status.HTTP_403_FORBIDDEN)
+
+    else:
+        return Response({'error': 'Not authorized to delete users.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if target.pk == requester.pk:
+        return Response({'error': 'You cannot delete your own account.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    username = target.username
+
+    from ...models import UserSession
+    from ...authentication import kill_session
+    sessions_to_kill = list(UserSession.objects.filter(user=target, is_active=True))
+    for s in sessions_to_kill:
+        kill_session(s)
+
+    target.delete()
+
+    log_action(
+        actor=requester, action=AuditLog.ActionType.DELETE,
+        target_model='CustomUser', target_id=user_id,
+        target_display=username,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({'message': f'User "{username}" deleted successfully.'}, status=status.HTTP_200_OK)
+
+
 # ── Tier / slot capacity ──────────────────────────────────────────────────────
 
 @api_view(['GET'])
@@ -671,3 +726,5 @@ def change_user_password(request, user_id):
         }, status=status.HTTP_200_OK)
     except Exception:
         return Response({'error': 'Password update failed.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+

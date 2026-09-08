@@ -5,7 +5,7 @@ import statesDistricts from '../../assets/json/indiaStatesDistricts.json';
 import {
   Handshake, CheckCircle2, CircleDot, Search,
   Phone, MapPin, IdCard, ArrowLeft, AlertCircle,
-  Plus, Mail, KeyRound, User, Hash, Eye, EyeOff, Edit, X, RefreshCw, Info,
+  Plus, Mail, KeyRound, User, Hash, Eye, EyeOff, Edit, X, RefreshCw, Info, Trash2,
 } from 'lucide-react';
 
 // ── ModalWrapper ───────────────────────────────────────────────────────────────
@@ -210,6 +210,9 @@ const EMPTY = {
 
 // ══════════════════════════════════════════════════════════════════════════════
 export default function DealerListing() {
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const isSuperadmin = currentUser?.role === 'superadmin';
+
   // ── List state ───────────────────────────────────────────────────────────
   const [dealers, setDealers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -218,6 +221,9 @@ export default function DealerListing() {
   const [registeringLicense, setRegisteringLicense] = useState({});
   const [validatingLicense, setValidatingLicense] = useState({});
   const [syncingLicense, setSyncingLicense] = useState({});
+  const [deletingDealer, setDeletingDealer] = useState({});
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
 
   // ── Page view: 'list' | 'create' ────────────────────────────────────────
   const [pageView, setPageView] = useState('list');
@@ -257,7 +263,7 @@ export default function DealerListing() {
   useEffect(() => {
     const hasValidating = dealers.some(d => d.authentication_status === 'Validating');
     if (!hasValidating) return;
-    const id = setInterval(fetchDealers, 5000);
+    const id = setInterval(fetchDealers, 20000);
     return () => clearInterval(id);
   }, [dealers, fetchDealers]);
 
@@ -369,6 +375,30 @@ export default function DealerListing() {
       setDealers(list => list.map(d => d.id === dealer.id ? { ...d, is_active: dealer.is_active } : d));
       window.alert(err.response?.data?.message || err.response?.data?.error || 'Failed to update status.');
     } finally { setTogglingActive(p => ({ ...p, [dealer.id]: false })); }
+  };
+
+  const handleDeleteDealer = (dealer) => {
+    setDeleteConfirmation(dealer);
+    setDeleteConfirmationText('');
+  };
+
+  const confirmDeleteDealer = async () => {
+    if (!deleteConfirmation) return;
+    const dealer = deleteConfirmation;
+    if (deleteConfirmationText.trim() !== dealer.dealer_name) {
+      window.alert('Dealer name did not match. Deletion cancelled.');
+      return;
+    }
+    setDeleteConfirmation(null);
+    setDeleteConfirmationText('');
+    setDeletingDealer(p => ({ ...p, [dealer.id]: true }));
+    try {
+      const res = await api.delete(`${BASE_URL}/delete-dealer/${dealer.id}`);
+      window.alert(res.data.message || 'Dealer deleted successfully.');
+      setDealers(list => list.filter(d => d.id !== dealer.id));
+    } catch (err) {
+      window.alert(err.response?.data?.error || 'Failed to delete dealer.');
+    } finally { setDeletingDealer(p => ({ ...p, [dealer.id]: false })); }
   };
 
   const handleRegisterLicenseRow = async (dealer) => {
@@ -741,6 +771,14 @@ export default function DealerListing() {
                           className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors">
                           <Edit size={14} />
                         </button>
+                        {isSuperadmin && (
+                          <button onClick={() => handleDeleteDealer(dealer)} disabled={deletingDealer[dealer.id]} title="Delete dealer"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors disabled:opacity-30">
+                            {deletingDealer[dealer.id]
+                              ? <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                              : <Trash2 size={14} />}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1057,6 +1095,58 @@ export default function DealerListing() {
               </button>
             </div>
           </form>
+        </ModalWrapper>
+
+        {/* ── Delete Confirmation Modal ─────────────────────────────────── */}
+        <ModalWrapper
+          open={!!deleteConfirmation}
+          onClose={() => {
+            setDeleteConfirmation(null);
+            setDeleteConfirmationText('');
+          }}
+          title="Delete Dealer"
+          icon={Trash2}
+          width="max-w-lg"
+        >
+          {deleteConfirmation && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-700 select-text">
+                This permanently deletes <strong>{deleteConfirmation.dealer_name}</strong>. This cannot be undone.
+                Delete is blocked if the dealer still has linked companies.
+              </p>
+              <p className="text-sm text-slate-600 select-text">
+                Type the dealer name exactly to confirm:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmationText}
+                onChange={e => setDeleteConfirmationText(e.target.value)}
+                placeholder={deleteConfirmation.dealer_name}
+                autoFocus
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300 bg-white"
+              />
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmation(null);
+                    setDeleteConfirmationText('');
+                  }}
+                  className="flex-1 inline-flex items-center justify-center h-9 px-4 text-sm rounded-lg font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteDealer}
+                  disabled={deleteConfirmationText.trim() !== deleteConfirmation.dealer_name}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={13} /> Delete Dealer
+                </button>
+              </div>
+            </div>
+          )}
         </ModalWrapper>
       </div>
     );

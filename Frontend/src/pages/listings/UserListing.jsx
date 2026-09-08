@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Users, CheckCircle2, KeyRound, Activity, Plus, Search,
   ArrowUp, ArrowDown, ArrowUpDown, Building2, Eye, Edit, X,
-  Info, Save, AlertCircle, ShieldAlert,
+  Info, Save, AlertCircle, ShieldAlert, Trash2,
 } from 'lucide-react';
 import api, { BASE_URL } from '../../assets/js/axiosConfig';
 import { useNavigate } from 'react-router-dom';
@@ -193,6 +193,9 @@ export default function UserListing() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [pwModalOpen, setPwModalOpen] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
 
   // ── Form state ───────────────────────────────────────────────────────────────
   const [formData, setFormData] = useState({ username: '', email: '', role: defaultRole, company_id: '', dealer_id: '', password: '', state: '', tier: 'basic' });
@@ -494,6 +497,32 @@ export default function UserListing() {
     }
   };
 
+  const handleDeleteUser = (user) => {
+    setDeleteConfirmation(user);
+    setDeleteConfirmationText('');
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteConfirmation || deletingId) return;
+    const user = deleteConfirmation;
+    if (deleteConfirmationText.trim() !== user.username) {
+      window.alert('Username did not match. Deletion cancelled.');
+      return;
+    }
+    setDeleteConfirmation(null);
+    setDeleteConfirmationText('');
+    setDeletingId(user.id);
+    try {
+      const res = await api.delete(`${BASE_URL}/delete_user/${user.id}`, { timeout: 20000 });
+      window.alert(res.data.message || 'User deleted successfully.');
+      setModalOpen(false);
+      fetchUsers();
+    } catch (err) {
+      window.alert(err.response?.data?.error || 'Failed to delete user.');
+      fetchUsers();
+    } finally { setDeletingId(null); }
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 md:p-8 min-h-screen bg-slate-50">
@@ -738,6 +767,12 @@ export default function UserListing() {
                           <KeyRound size={14} />
                         </button>
                       )}
+                      {(isSuperadmin || isCompanyAdmin) && user.role !== 'superadmin' && (
+                        <button onClick={() => handleDeleteUser(user)} disabled={deletingId === user.id}
+                          className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-30" title="Delete user">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -848,6 +883,59 @@ export default function UserListing() {
                   }`}
               >
                 {togglingId === selectedUser?.id ? '…' : selectedUser?.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+              {(isSuperadmin || isCompanyAdmin) && selectedUser?.role !== 'superadmin' && (
+                <button
+                  onClick={() => handleDeleteUser(selectedUser)}
+                  disabled={deletingId === selectedUser?.id}
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm rounded-lg font-medium border cursor-pointer transition-colors disabled:opacity-50 bg-white border-red-200 text-red-600 hover:bg-red-50"
+                  title="Delete user"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </ModalWrapper>
+
+      {/* ── Delete Confirmation Modal ───────────────────────────────────────── */}
+      <ModalWrapper
+        open={!!deleteConfirmation}
+        onClose={() => { setDeleteConfirmation(null); setDeleteConfirmationText(''); }}
+        title="Delete User"
+        icon={Trash2}
+        width="max-w-md"
+      >
+        {deleteConfirmation && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              This permanently deletes <strong>{deleteConfirmation.username}</strong>. This cannot be undone.
+            </p>
+            <p className="text-sm text-slate-600">Type the username exactly to confirm:</p>
+            <input
+              type="text"
+              value={deleteConfirmationText}
+              onChange={e => setDeleteConfirmationText(e.target.value)}
+              placeholder={deleteConfirmation.username}
+              autoFocus
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300 bg-white"
+            />
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => { setDeleteConfirmation(null); setDeleteConfirmationText(''); }}
+                className="flex-1 inline-flex items-center justify-center h-9 px-4 text-sm rounded-lg font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteUser}
+                disabled={deleteConfirmationText.trim() !== deleteConfirmation.username || deletingId === deleteConfirmation.id}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white cursor-pointer transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={13} /> {deletingId === deleteConfirmation.id ? 'Deleting…' : 'Delete User'}
               </button>
             </div>
           </div>
