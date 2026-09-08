@@ -112,7 +112,9 @@ def _validate_crew_assignment_payload(company, payload, exclude_assignment_id=No
 def get_employee_types(request):
     user, company = _get_authenticated_company_admin(request)
 
-    emp_types = EmployeeType.objects.filter(company=company).order_by('id')
+    show_deleted = request.query_params.get('show_deleted', 'false').lower() == 'true'
+    emp_types = EmployeeType.objects.filter(company=company)
+    emp_types = emp_types.filter(is_deleted=show_deleted).order_by('id')
     serializer = EmployeeTypeSerializer(emp_types, many=True)
     return Response({'message': 'Success', 'data': serializer.data}, status=status.HTTP_200_OK)
 
@@ -143,6 +145,23 @@ def update_employee_type(request, pk):
         return Response({'message': 'Employee type updated successfully', 'data': serializer.data}, status=status.HTTP_200_OK)
 
     return Response({'message': 'Validation failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+def delete_employee_type(request, pk):
+    user, company = _get_authenticated_company_admin(request)
+
+    obj, err = _get_object_or_404(EmployeeType, pk, company)
+    if err:
+        return err
+
+    if obj.is_deleted:
+        return Response({'message': 'Employee type is already deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    obj.is_deleted = True
+    obj.updated_by = user
+    obj.save(update_fields=['is_deleted', 'updated_by', 'updated_at'])
+    return Response({'message': 'Employee type deleted successfully'}, status=status.HTTP_200_OK)
 
 
 # ── Employee ──────────────────────────────────────────────────────────────────
@@ -271,7 +290,7 @@ def get_employee_types_dropdown(request):
     user, company = _get_authenticated_company_admin(request)
 
     data = list(
-        EmployeeType.objects.filter(company=company)
+        EmployeeType.objects.filter(company=company, is_deleted=False)
         .values('id', 'emp_type_name')
         .order_by('emp_type_name')
     )

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { UserRound, Tag, Users, Plus, Eye, Pencil, Search, X, ChevronRight } from 'lucide-react';
+import { UserRound, Tag, Users, Plus, Eye, Pencil, Search, X, ChevronRight, Trash2 } from 'lucide-react';
 import { useModalForm } from '../../assets/js/useModalForm';
 import { submitForm } from '../../assets/js/submitForm';
 import api, { BASE_URL } from '../../assets/js/axiosConfig';
@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 
-const EMP_TYPES_CACHE_KEY = 'masterdata_emp_types';
+const EMP_TYPES_CACHE_KEY = 'masterdata_emp_types_v2';
 const EMP_TYPES_TTL = 30 * 60 * 1000;
 const PER_PAGE = 10;
 
@@ -184,6 +184,20 @@ export default function EmployeeCombined() {
     }
   };
 
+  const handleDeleteType = async (type) => {
+    if (!window.confirm(`Delete employee type "${type.emp_type_name}"?`)) return;
+
+    try {
+      await api.delete(`${BASE_URL}/masterdata/employee-types/delete/${type.id}`);
+      window.alert('Employee type deleted successfully.');
+      if (selectedType === type.id) setSelectedType(null);
+      cacheManager.invalidate(EMP_TYPES_CACHE_KEY);
+      loadEmpTypes(true);
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Failed to delete employee type.');
+    }
+  };
+
   const typeIsReadOnly = typeModalMode === 'view';
   const getTypeModalTitle = () => ({ view: 'Employee Type Details', edit: 'Edit Employee Type', create: 'Create Employee Type' }[typeModalMode]);
 
@@ -195,6 +209,18 @@ export default function EmployeeCombined() {
     setSubmitting,
     onSuccess: () => { setIsModalOpen(false); setFormData(emptyEmpForm); fetchEmployees(); },
   }); };
+
+  const handleDeleteEmployee = async (employee) => {
+    if (!window.confirm(`Delete employee "${employee.employee_name}"?`)) return;
+
+    try {
+      await api.put(`${BASE_URL}/masterdata/employees/update/${employee.id}`, { is_deleted: true });
+      window.alert('Employee deleted successfully.');
+      fetchEmployees();
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Failed to delete employee.');
+    }
+  };
 
   const getEmpModalTitle = () => ({ view: 'Employee Details', edit: 'Edit Employee', create: 'Create Employee' }[modalMode]);
   const selectedTypeName = empTypes.find(t => t.id === selectedType)?.emp_type_name || '';
@@ -344,6 +370,13 @@ export default function EmployeeCombined() {
                           >
                             <Pencil size={11} />
                           </span>
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleDeleteType(type); }}
+                            className="p-1 rounded-md transition-all opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:bg-red-50 hover:text-red-600"
+                            title="Delete type"
+                          >
+                            <Trash2 size={11} />
+                          </span>
                         </button>
                       );
                     })
@@ -456,6 +489,15 @@ export default function EmployeeCombined() {
                                   <div className="flex items-center justify-end gap-1.5">
                                     <button onClick={() => openViewModal(item)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Eye size={14} /></button>
                                     <button onClick={() => openEditModal(item)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Pencil size={14} /></button>
+                                    {!item.is_deleted && (
+                                      <button
+                                        onClick={() => handleDeleteEmployee(item)}
+                                        title="Delete employee"
+                                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -566,6 +608,7 @@ export default function EmployeeCombined() {
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button onClick={() => openTypeView(type)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Eye size={14} /></button>
                                   <button onClick={() => openTypeEdit(type)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Pencil size={14} /></button>
+                                  <button onClick={() => handleDeleteType(type)} title="Delete type" className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"><Trash2 size={14} /></button>
                                 </div>
                               </td>
                             </tr>

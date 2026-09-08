@@ -178,6 +178,7 @@ urlpatterns = [
     path('masterdata/employee-types', crew_views.get_employee_types),
     path('masterdata/employee-types/create', crew_views.create_employee_type),
     path('masterdata/employee-types/update/<int:pk>', crew_views.update_employee_type),
+    path('masterdata/employee-types/delete/<int:pk>', crew_views.delete_employee_type),
     path('masterdata/employees', crew_views.get_employees),
     path('masterdata/employees/create', crew_views.create_employee),
     path('masterdata/employees/update/<int:pk>', crew_views.update_employee),
