@@ -835,7 +835,7 @@ export default function CompanyListing() {
                   // Button state machine
                   const showRegister = !hasCompanyId;
                   const showAuthenticate = hasCompanyId && !isApproved && !isValidating;
-                  const showSync = hasCompanyId && isApproved && !hasConfigErr && company.client_type === 'direct';
+                  const showSync = hasCompanyId && isApproved && !hasConfigErr;
                   const showValidating = isValidating;
 
                   return (
@@ -858,9 +858,7 @@ export default function CompanyListing() {
                       </td>
                       <td className="px-5 py-4">
                         <span className="text-sm font-medium text-slate-700">
-                          {company.client_type === 'dealer_company'
-                            ? (company.total_user_count || 0)
-                            : (company.number_of_licences || 0)}
+                          {company.number_of_licences || 0}
                           <span className="text-xs text-slate-400 font-normal ml-1">units</span>
                         </span>
                       </td>
@@ -936,12 +934,7 @@ export default function CompanyListing() {
                               Validating…
                             </span>
                           )}
-                          {isApproved && !showSync && !isValidating && !expired && company.client_type !== 'direct' && (
-                            <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
-                              <CheckCircle2 size={12} /> Active
-                            </span>
-                          )}
-                          {isApproved && !expired && company.client_type === 'direct' && !showSync && (
+                          {isApproved && !showSync && !isValidating && !expired && (
                             <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
                               <CheckCircle2 size={12} /> Active
                             </span>

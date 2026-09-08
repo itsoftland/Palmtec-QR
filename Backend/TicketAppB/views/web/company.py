@@ -730,7 +730,6 @@ def _safe_int(val, default=0):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, LicensePermission])
-@transaction.atomic
 def create_company(request):
     """
     Create a new company — two paths:
@@ -744,8 +743,14 @@ def create_company(request):
                        intermediate_user_count } in the request body.
             Validates dealer pool (select_for_update to prevent races).
             On success: validates against live dealer pool properties (slots_remaining,
-            users_slots_remaining), sets company authentication_status = Approved,
-            inherits dealer product dates.
+            users_slots_remaining), grants provisional authentication_status = Approved
+            inheriting dealer product dates, then (after the DB transaction commits)
+            registers the company with the external license server and queues an
+            async poll to overwrite the provisional dates/units with the real
+            license-server data (ProductFromDate/ToDate, NumberOfLicence, PalmtecCount,
+            TotalUserCount, PremiumUserCount, IntermediateUserCount). Listing UI already
+            polls while authentication_status == 'Validating', so this needs no
+            frontend change.
     """
     user = request.user
 
@@ -791,104 +796,134 @@ def create_company(request):
         logger.warning(f"Company creation validation failed: {serializer.errors}")
         return Response({"message": "Validation failed", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-    # ── Path B: dealer_admin ──────────────────────────────────────────────────
-    if _is_dealer_admin(user):
-        if not user.dealer_id:
-            return Response({'error': 'No dealer linked to this account.'}, status=status.HTTP_400_BAD_REQUEST)
+    is_dealer_path = _is_dealer_admin(user)
 
-        # Parse requested allocation from body
-        alloc_palmtec = _safe_int(request.data.get('palmtec_count', 0))
-        alloc_total   = _safe_int(request.data.get('total_user_count', 0))
-        alloc_premium = _safe_int(request.data.get('premium_user_count', 0))
-        alloc_inter   = _safe_int(request.data.get('intermediate_user_count', 0))
+    with transaction.atomic():
+        # ── Path B: dealer_admin ────────────────────────────────────────────
+        if is_dealer_path:
+            if not user.dealer_id:
+                return Response({'error': 'No dealer linked to this account.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if alloc_total <= 0:
-            return Response({'error': 'total_user_count must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+            # Parse requested allocation from body
+            alloc_palmtec = _safe_int(request.data.get('palmtec_count', 0))
+            alloc_total   = _safe_int(request.data.get('total_user_count', 0))
+            alloc_premium = _safe_int(request.data.get('premium_user_count', 0))
+            alloc_inter   = _safe_int(request.data.get('intermediate_user_count', 0))
 
-        if alloc_premium + alloc_inter > alloc_total:
-            return Response(
-                {'error': 'premium_user_count + intermediate_user_count cannot exceed total_user_count.'},
-                status=status.HTTP_400_BAD_REQUEST,
+            if alloc_total <= 0:
+                return Response({'error': 'total_user_count must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if alloc_premium + alloc_inter > alloc_total:
+                return Response(
+                    {'error': 'premium_user_count + intermediate_user_count cannot exceed total_user_count.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Row-level lock on dealer to serialise concurrent company creations
+            try:
+                dealer = Dealer.objects.select_for_update().get(pk=user.dealer_id)
+            except Dealer.DoesNotExist:
+                return Response({'error': 'Dealer not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if dealer.authentication_status != Dealer.AuthStatus.APPROVED:
+                return Response({'error': 'Dealer license is not approved. Cannot create companies.'}, status=status.HTTP_403_FORBIDDEN)
+
+            # Pool validation (live-computed from child companies)
+            slots_rem  = dealer.slots_remaining
+            user_slots = dealer.users_slots_remaining
+            alloc_basic = alloc_total - alloc_premium - alloc_inter
+            errors = []
+            if alloc_palmtec > slots_rem:
+                errors.append(f"ETM devices: requested {alloc_palmtec}, available {slots_rem}")
+            if alloc_total > user_slots['total']:
+                errors.append(f"Total users: requested {alloc_total}, available {user_slots['total']}")
+            if alloc_premium > user_slots['premium']:
+                errors.append(f"Premium users: requested {alloc_premium}, available {user_slots['premium']}")
+            if alloc_inter > user_slots['inter']:
+                errors.append(f"Intermediate users: requested {alloc_inter}, available {user_slots['inter']}")
+            if alloc_basic > user_slots['basic']:
+                errors.append(f"Basic users: requested {alloc_basic}, available {user_slots['basic']}")
+            if errors:
+                return Response({
+                    'error': 'Insufficient dealer pool capacity.',
+                    'details': errors,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Save company — provisionally authenticated via dealer pool; real
+            # license-server data is fetched below once this transaction commits.
+            company = serializer.save(
+                created_by=user,
+                client_type='dealer_company',
+                dealer=dealer,
+                palmtec_count=alloc_palmtec,
+                total_user_count=alloc_total,
+                premium_user_count=alloc_premium,
+                intermediate_user_count=alloc_inter,
+                authentication_status=Company.AuthStatus.APPROVED,
+                product_from_date=dealer.product_from_date,
+                product_to_date=dealer.product_to_date,
             )
 
-        # Row-level lock on dealer to serialise concurrent company creations
-        try:
-            dealer = Dealer.objects.select_for_update().get(pk=user.dealer_id)
-        except Dealer.DoesNotExist:
-            return Response({'error': 'Dealer not found.'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.info(
+                f"Dealer company '{company.company_name}' created by {user.username}. "
+                f"Allocated: palmtec={alloc_palmtec}, users={alloc_total}"
+            )
 
-        if dealer.authentication_status != Dealer.AuthStatus.APPROVED:
-            return Response({'error': 'Dealer license is not approved. Cannot create companies.'}, status=status.HTTP_403_FORBIDDEN)
+        # ── Path A: superadmin / executive ─────────────────────────────────
+        else:
+            company = serializer.save(
+                created_by=user,
+                client_type='direct',
+                dealer=None,
+            )
+            logger.info(f"Direct company '{company.company_name}' created by {user.username}.")
 
-        # Pool validation (live-computed from child companies)
-        slots_rem  = dealer.slots_remaining
-        user_slots = dealer.users_slots_remaining
-        alloc_basic = alloc_total - alloc_premium - alloc_inter
-        errors = []
-        if alloc_palmtec > slots_rem:
-            errors.append(f"ETM devices: requested {alloc_palmtec}, available {slots_rem}")
-        if alloc_total > user_slots['total']:
-            errors.append(f"Total users: requested {alloc_total}, available {user_slots['total']}")
-        if alloc_premium > user_slots['premium']:
-            errors.append(f"Premium users: requested {alloc_premium}, available {user_slots['premium']}")
-        if alloc_inter > user_slots['inter']:
-            errors.append(f"Intermediate users: requested {alloc_inter}, available {user_slots['inter']}")
-        if alloc_basic > user_slots['basic']:
-            errors.append(f"Basic users: requested {alloc_basic}, available {user_slots['basic']}")
-        if errors:
-            return Response({
-                'error': 'Insufficient dealer pool capacity.',
-                'details': errors,
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Save company — authenticated automatically via dealer pool
-        company = serializer.save(
+        # ── Create company_admin user (shared for both paths) ───────────────
+        User.objects.create_user(
+            username=user_username,
+            email=user_email_field,
+            password=user_password,
+            role=UserRole.COMPANY_ADMIN,
+            tier=UserTier.NONE,
+            company=company,
+            is_verified=True,
             created_by=user,
-            client_type='dealer_company',
-            dealer=dealer,
-            palmtec_count=alloc_palmtec,
-            total_user_count=alloc_total,
-            premium_user_count=alloc_premium,
-            intermediate_user_count=alloc_inter,
-            authentication_status=Company.AuthStatus.APPROVED,
-            product_from_date=dealer.product_from_date,
-            product_to_date=dealer.product_to_date,
+        )
+        logger.info(f"Company admin '{user_username}' created for '{company.company_name}'.")
+
+        log_action(
+            actor=user, action=AuditLog.ActionType.CREATE,
+            target_model='Company', target_id=company.pk,
+            target_display=company.company_name,
+            details={'client_type': company.client_type},
+            ip_address=request.META.get('REMOTE_ADDR'),
         )
 
-        logger.info(
-            f"Dealer company '{company.company_name}' created by {user.username}. "
-            f"Allocated: palmtec={alloc_palmtec}, users={alloc_total}"
-        )
+    # ── Register dealer-created company with the license server ────────────────
+    # Done after the transaction commits: register_with_license_server() is an
+    # external HTTP call and must not run while the dealer row lock is held.
+    # Failure here does not undo the company — it keeps the dealer-pool-granted
+    # provisional data and can be retried later; success flips the company to
+    # 'Validating' so the existing poll_company_license task fills in the real
+    # ProductFromDate/ToDate and license units, same as a direct company.
+    if is_dealer_path:
+        registration_result = register_with_license_server(company)
+        if registration_result['success']:
+            company.company_id = registration_result['customer_id']
+            company.authentication_status = Company.AuthStatus.VALIDATING
+            company.error_message = None
+            company.save(update_fields=['company_id', 'authentication_status', 'error_message'])
 
-    # ── Path A: superadmin / executive ───────────────────────────────────────
-    else:
-        company = serializer.save(
-            created_by=user,
-            client_type='direct',
-            dealer=None,
-        )
-        logger.info(f"Direct company '{company.company_name}' created by {user.username}.")
-
-    # ── Create company_admin user (shared for both paths) ─────────────────────
-    User.objects.create_user(
-        username=user_username,
-        email=user_email_field,
-        password=user_password,
-        role=UserRole.COMPANY_ADMIN,
-        tier=UserTier.NONE,
-        company=company,
-        is_verified=True,
-        created_by=user,
-    )
-    logger.info(f"Company admin '{user_username}' created for '{company.company_name}'.")
-
-    log_action(
-        actor=user, action=AuditLog.ActionType.CREATE,
-        target_model='Company', target_id=company.pk,
-        target_display=company.company_name,
-        details={'client_type': company.client_type},
-        ip_address=request.META.get('REMOTE_ADDR'),
-    )
+            from ...tasks import poll_company_license
+            poll_company_license.delay(company.id)
+            logger.info(f"Queued license-server sync for dealer company '{company.company_name}' (ID: {company.pk}).")
+        else:
+            company.error_message = f"License server sync failed: {registration_result['error']}"
+            company.save(update_fields=['error_message'])
+            logger.warning(
+                f"License server registration failed for dealer company "
+                f"'{company.company_name}' (ID: {company.pk}): {registration_result['error']}"
+            )
 
     return Response({"message": "Company created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
 
@@ -1695,7 +1730,8 @@ def sync_company_license(request, pk):
     Dry-run sync: fetch latest data from license server, return old vs new diff.
     Does NOT save anything. Call /confirm to apply.
 
-    Access: superadmin, executive (own companies), company_admin (own company).
+    Access: superadmin, executive (own companies), company_admin (own company),
+    dealer_admin (own dealer's companies).
     """
     user = request.user
 
@@ -1711,11 +1747,11 @@ def sync_company_license(request, pk):
     elif _is_executive(user):
         if company.created_by_id != user.id:
             return Response({'error': 'You can only sync companies you created.'}, status=status.HTTP_403_FORBIDDEN)
+    elif _is_dealer_admin(user):
+        if not user.dealer_id or company.dealer_id != user.dealer_id:
+            return Response({'error': 'You can only sync your own companies.'}, status=status.HTTP_403_FORBIDDEN)
     elif not _is_superadmin(user):
         return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-
-    if company.client_type != Company.ClientType.DIRECT:
-        return Response({'error': 'Sync is only available for direct companies (not dealer-managed companies).'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not company.company_id:
         return Response({'error': 'Company is not registered with the license server yet.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1752,11 +1788,11 @@ def sync_company_license_confirm(request, pk):
     elif _is_executive(user):
         if company.created_by_id != user.id:
             return Response({'error': 'You can only sync companies you created.'}, status=status.HTTP_403_FORBIDDEN)
+    elif _is_dealer_admin(user):
+        if not user.dealer_id or company.dealer_id != user.dealer_id:
+            return Response({'error': 'You can only sync your own companies.'}, status=status.HTTP_403_FORBIDDEN)
     elif not _is_superadmin(user):
         return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
-
-    if company.client_type != Company.ClientType.DIRECT:
-        return Response({'error': 'Sync is only available for direct companies.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not company.company_id:
         return Response({'error': 'Company is not registered with the license server yet.'}, status=status.HTTP_400_BAD_REQUEST)
