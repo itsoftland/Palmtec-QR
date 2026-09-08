@@ -158,6 +158,7 @@ urlpatterns = [
     path('masterdata/vehicles', transport_views.get_vehicles),
     path('masterdata/vehicles/create', transport_views.create_vehicle),
     path('masterdata/vehicles/update/<int:pk>', transport_views.update_vehicle),
+    path('masterdata/vehicles/permanently-delete/<int:pk>', transport_views.permanently_delete_vehicle),
     path('masterdata/routes', transport_views.get_routes),
     path('masterdata/routes/<int:pk>', transport_views.get_route_detail),
     path('masterdata/routes/create', transport_views.create_route),

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
 
-from ....models import BusType, Stage, Route, VehicleType, RouteStage, RouteBusType, RouteDepot, Fare, Depot, UserRole
+from ....models import BusType, Stage, Route, VehicleType, RouteStage, RouteBusType, RouteDepot, Fare, Depot, UserRole, CrewAssignment
 from django.db.models import Count
 from ....serializers.masterdata import BusTypeSerializer, StageSerializer, RouteSerializer, RouteListSerializer, VehicleTypeSerializer
 from ...utils import _get_authenticated_company_admin, _get_object_or_404
@@ -379,6 +379,38 @@ def update_vehicle(request, pk):
         return Response({'message': 'Vehicle updated successfully', 'data': serializer.data}, status=status.HTTP_200_OK)
 
     return Response({'message': 'Validation failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+def permanently_delete_vehicle(request, pk):
+    _user, company = _get_authenticated_company_admin(request)
+
+    obj, err = _get_object_or_404(VehicleType, pk, company)
+    if err:
+        return err
+
+    assignments = CrewAssignment.objects.filter(vehicle=obj)
+    if assignments.exists():
+        return Response(
+            {
+                'message': 'Vehicle is assigned to crew. Remove the crew assignment before permanent deletion.',
+                'assignments': [
+                    {'id': assignment.id}
+                    for assignment in assignments
+                ],
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    registration_number = obj.bus_reg_num
+    obj.delete()
+    logger.warning(
+        'Vehicle permanently deleted: %s (ID: %s, company: %s)',
+        registration_number,
+        pk,
+        company.id,
+    )
+    return Response({'message': 'Vehicle permanently deleted'}, status=status.HTTP_200_OK)
 
 
 # ── Dropdowns ─────────────────────────────────────────────────────────────────

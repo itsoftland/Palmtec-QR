@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Truck, Bus, Tag, Plus, Eye, Pencil, Search, X, ChevronRight } from 'lucide-react';
+import { Truck, Bus, Tag, Plus, Eye, Pencil, Trash2, Search, X, ChevronRight } from 'lucide-react';
 import { useModalForm } from '../../assets/js/useModalForm';
 import { submitForm } from '../../assets/js/submitForm';
 import api, { BASE_URL } from '../../assets/js/axiosConfig';
@@ -60,6 +60,7 @@ export default function VehicleCombined() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [vehSearch, setVehSearch] = useState('');
   const [vehPage, setVehPage] = useState(1);
+  const [deletingVehicleId, setDeletingVehicleId] = useState(null);
 
   const {
     isModalOpen, setIsModalOpen,
@@ -224,6 +225,26 @@ export default function VehicleCombined() {
     setSubmitting,
     onSuccess: () => { setIsModalOpen(false); setFormData(emptyVehicleForm); fetchVehicles(); },
   }); };
+
+  const handlePermanentVehicleDelete = async (vehicle) => {
+    if (!window.confirm(`Permanently delete vehicle "${vehicle.bus_reg_num}"? This cannot be undone.`)) return;
+
+    setDeletingVehicleId(vehicle.id);
+    try {
+      await api.delete(`${BASE_URL}/masterdata/vehicles/permanently-delete/${vehicle.id}`);
+      await fetchVehicles();
+    } catch (err) {
+      const data = err.response?.data;
+      const assignments = data?.assignments?.map(assignment => `#${assignment.id}`).join(', ');
+      window.alert(
+        [data?.message || 'Unable to permanently delete vehicle.', assignments && `Assignments: ${assignments}`]
+          .filter(Boolean)
+          .join('\n')
+      );
+    } finally {
+      setDeletingVehicleId(null);
+    }
+  };
 
   const getVehModalTitle = () => ({ view: 'Vehicle Details', edit: 'Edit Vehicle', create: 'Register Vehicle' }[modalMode]);
   const selectedTypeName = busTypes.find(t => t.id === selectedType)?.name || '';
@@ -489,6 +510,11 @@ export default function VehicleCombined() {
                                   <div className="flex items-center justify-end gap-1.5">
                                     <button onClick={() => openViewModal(item)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Eye size={14} /></button>
                                     <button onClick={() => openEditModal(item)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Pencil size={14} /></button>
+                                    <button onClick={() => handlePermanentVehicleDelete(item)} title="Permanently delete"
+                                      aria-label={`Permanently delete ${item.bus_reg_num}`} disabled={deletingVehicleId === item.id}
+                                      className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                      <Trash2 size={14} />
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
