@@ -401,6 +401,39 @@ export default function RouteListing() {
     setWizardStep(0);
   };
 
+  // For <select>: 1st Enter opens dropdown, 2nd Enter moves to next field.
+  const enterArmedSelectRef = useRef(null);
+
+  // Enter key moves focus to next input/select instead of submitting.
+  const handleWizardEnterKey = (e) => {
+    if (e.key !== 'Enter') return;
+    const { tagName, type } = e.target;
+    if (tagName !== 'INPUT' && tagName !== 'SELECT') return;
+    if (type === 'checkbox' || type === 'file') return;
+
+    if (tagName === 'SELECT' && enterArmedSelectRef.current !== e.target) {
+      enterArmedSelectRef.current = e.target;
+      e.preventDefault();
+      e.target.click(); // opens native dropdown
+      return;
+    }
+    enterArmedSelectRef.current = null;
+
+    e.preventDefault();
+    const focusable = Array.from(e.currentTarget.querySelectorAll('input, select'))
+      .filter(el => !el.disabled && el.type !== 'checkbox' && el.type !== 'file' && el.offsetParent !== null);
+    const idx = focusable.indexOf(e.target);
+    if (idx > -1 && idx < focusable.length - 1) {
+      const next = focusable[idx + 1];
+      next.focus();
+      next.select?.();
+    }
+  };
+
+  const handleWizardSelectBlur = (e) => {
+    if (enterArmedSelectRef.current === e.target) enterArmedSelectRef.current = null;
+  };
+
   // const handleWizardChange = (e) => {
   //   const { name, value, type, checked } = e.target;
   //   let processedValue = type === 'checkbox' ? checked : value;
@@ -459,8 +492,15 @@ export default function RouteListing() {
 
   const goToStep2 = () => {
     const { route_code, route_name, no_of_stages, min_fare, fare_type, bus_type } = wizardData;
-    if (!route_code.trim() || !route_name.trim() || !no_of_stages || !min_fare || !fare_type || !bus_type) {
-      window.alert('Please fill all required fields.');
+    const missing = [];
+    if (!route_code.trim()) missing.push('Route Code');
+    if (!route_name.trim()) missing.push('Route Name');
+    if (!no_of_stages) missing.push('No of Stages');
+    if (!min_fare) missing.push('Min Fare');
+    if (!fare_type) missing.push('Fare Type');
+    if (!bus_type) missing.push('Bus Type');
+    if (missing.length) {
+      window.alert(`Please fill: ${missing.join(', ')}.`);
       return;
     }
     if (route_code.trim().length < 1) {
@@ -975,7 +1015,7 @@ export default function RouteListing() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {wizardStep > 0 && (
         <div className="fixed inset-0 bg-slate-900/70 z-50 flex items-start justify-center overflow-y-auto py-6 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl" onKeyDown={handleWizardEnterKey} onBlurCapture={handleWizardSelectBlur}>
 
             {/* Wizard header */}
             <div className="bg-slate-900 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
