@@ -1997,14 +1997,32 @@ export default function RouteListing() {
                                   <input
                                     type="number"
                                     value={fare}
-                                    min="0"
-                                    max="999"
+                                    min="-1"
+                                    max="1000"
                                     readOnly={isReadOnly}
                                     onChange={e => {
                                       const value = e.target.value;
+                                      const numValue = parseFloat(value);
+                                      const oldValue = parseInt(fare, 10) || 0;
 
-                                      if (parseFloat(value) > 999) {
+                                      // native spinner overstep at bound -> wrap
+                                      if (numValue === 1000 && oldValue === 999) {
+                                        updateModalFareList(idx, '0');
+                                        return;
+                                      }
+
+                                      if (numValue === -1 && oldValue === 0) {
                                         updateModalFareList(idx, '999');
+                                        return;
+                                      }
+
+                                      if (numValue > 999) {
+                                        updateModalFareList(idx, '999');
+                                        return;
+                                      }
+
+                                      if (numValue < 0) {
+                                        updateModalFareList(idx, '0');
                                         return;
                                       }
 
@@ -2090,14 +2108,32 @@ export default function RouteListing() {
                                       <input
                                         type="number"
                                         value={row[cIdx] ?? 0}
-                                        min="0"
-                                        max="999"
+                                        min="-1"
+                                        max="1000"
                                         readOnly={isReadOnly}
                                         onChange={e => {
                                           const value = e.target.value;
+                                          const numValue = parseFloat(value);
+                                          const oldValue = parseInt(row[cIdx], 10) || 0;
 
-                                          if (parseFloat(value) > 999) {
+                                          // native spinner overstep at bound -> wrap
+                                          if (numValue === 1000 && oldValue === 999) {
+                                            updateModalFareMatrix(rIdx, cIdx, '0');
+                                            return;
+                                          }
+
+                                          if (numValue === -1 && oldValue === 0) {
                                             updateModalFareMatrix(rIdx, cIdx, '999');
+                                            return;
+                                          }
+
+                                          if (numValue > 999) {
+                                            updateModalFareMatrix(rIdx, cIdx, '999');
+                                            return;
+                                          }
+
+                                          if (numValue < 0) {
+                                            updateModalFareMatrix(rIdx, cIdx, '0');
                                             return;
                                           }
 
