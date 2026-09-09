@@ -1876,7 +1876,9 @@ def sync_company_license_confirm(request, pk):
 @transaction.atomic
 def permanently_delete_company(request, pk):
     """
-    Permanently delete a company. Superadmin only.
+    Permanently delete a company. Superadmin, a dealer_admin deleting their
+    own dealer-created company, or an executive deleting a company they
+    personally created.
 
     Requires the request body to contain {"confirm_name": "<exact company_name>"}
     as an explicit confirmation guard against accidental deletion.
@@ -1886,13 +1888,20 @@ def permanently_delete_company(request, pk):
     the DB with an orphaned company_code FK.
     """
     user = request.user
-    if user.role != UserRole.SUPERADMIN:
+    if user.role != UserRole.SUPERADMIN and not _is_dealer_admin(user) and not _is_executive(user):
         return Response({'error': 'Superadmin only'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         company = Company.objects.select_for_update().get(pk=pk)
     except Company.DoesNotExist:
         return Response({'error': 'Company not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if _is_dealer_admin(user):
+        if company.client_type != Company.ClientType.DEALER_COMPANY or company.dealer_id != user.dealer_id:
+            return Response({'error': 'You can only delete companies under your dealership.'}, status=status.HTTP_403_FORBIDDEN)
+    elif _is_executive(user):
+        if company.created_by_id != user.id:
+            return Response({'error': 'You can only delete companies you created.'}, status=status.HTTP_403_FORBIDDEN)
 
     company_name = company.company_name
     confirm_name = (request.data.get('confirm_name') or '').strip()

@@ -951,7 +951,7 @@ export default function CompanyListing() {
                             className="p-1.5 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors disabled:opacity-30">
                             <Edit size={14} />
                           </button>
-                          {isSuperadmin && (
+                          {(isSuperadmin || isDealerAdmin || isExecutive) && (
                             <button onClick={() => handlePermanentDelete(company)} disabled={deletingPermanent[company.id]} title="Permanently delete"
                               className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors disabled:opacity-30">
                               {deletingPermanent[company.id]
