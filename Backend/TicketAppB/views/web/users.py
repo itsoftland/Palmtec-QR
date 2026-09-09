@@ -561,6 +561,13 @@ def delete_user(request, user_id):
         if target.role != UserRole.COMPANY_USER or target.company_id != requester.company_id:
             return Response({'error': 'Not authorized to delete this user.'}, status=status.HTTP_403_FORBIDDEN)
 
+    elif _is_executive(requester):
+        own_company_ids = Company.objects.filter(
+            created_by=requester, is_active=True,
+        ).values_list('id', flat=True)
+        if target.role != UserRole.COMPANY_ADMIN or target.company_id not in own_company_ids:
+            return Response({'error': 'Not authorized to delete this user.'}, status=status.HTTP_403_FORBIDDEN)
+
     else:
         return Response({'error': 'Not authorized to delete users.'}, status=status.HTTP_403_FORBIDDEN)
 

@@ -767,7 +767,7 @@ export default function UserListing() {
                           <KeyRound size={14} />
                         </button>
                       )}
-                      {(isSuperadmin || isCompanyAdmin) && user.role !== 'superadmin' && (
+                      {(isSuperadmin || isCompanyAdmin || isExecutive) && user.role !== 'superadmin' && (
                         <button onClick={() => handleDeleteUser(user)} disabled={deletingId === user.id}
                           className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-30" title="Delete user">
                           <Trash2 size={14} />
@@ -884,7 +884,7 @@ export default function UserListing() {
               >
                 {togglingId === selectedUser?.id ? '…' : selectedUser?.is_active ? 'Deactivate' : 'Activate'}
               </button>
-              {(isSuperadmin || isCompanyAdmin) && selectedUser?.role !== 'superadmin' && (
+              {(isSuperadmin || isCompanyAdmin || isExecutive) && selectedUser?.role !== 'superadmin' && (
                 <button
                   onClick={() => handleDeleteUser(selectedUser)}
                   disabled={deletingId === selectedUser?.id}
