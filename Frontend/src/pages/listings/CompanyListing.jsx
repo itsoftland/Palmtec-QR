@@ -1371,10 +1371,10 @@ export default function CompanyListing() {
           className={`px-5 py-2 text-sm font-medium rounded-lg transition-all cursor-pointer flex items-center gap-2 ${createMode === 'new' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
           <Plus size={13} /> Register New
         </button>
-        <button onClick={() => setCreateMode('import')}
+        {/* <button onClick={() => setCreateMode('import')}
           className={`px-5 py-2 text-sm font-medium rounded-lg transition-all cursor-pointer flex items-center gap-2 ${createMode === 'import' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
           <Download size={13} /> Import Existing
-        </button>
+        </button> */}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

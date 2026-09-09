@@ -152,6 +152,7 @@ urlpatterns = [
     path('masterdata/bus-types', transport_views.get_bus_types),
     path('masterdata/bus-types/create', transport_views.create_bus_type),
     path('masterdata/bus-types/update/<int:pk>', transport_views.update_bus_type),
+    path('masterdata/bus-types/permanently-delete/<int:pk>', transport_views.permanently_delete_bus_type),
     path('masterdata/stages', transport_views.get_stages),
     path('masterdata/stages/create', transport_views.create_stage),
     path('masterdata/stages/update/<int:pk>', transport_views.update_stage),

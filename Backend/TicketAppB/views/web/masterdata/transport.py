@@ -55,6 +55,39 @@ def update_bus_type(request, pk):
     return Response({'message': 'Validation failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['DELETE'])
+def permanently_delete_bus_type(request, pk):
+    _user, company = _get_authenticated_company_admin(request)
+
+    obj, err = _get_object_or_404(BusType, pk, company)
+    if err:
+        return err
+
+    vehicles = VehicleType.objects.filter(bus_type=obj)
+    routes = Route.objects.filter(bus_type=obj)
+    route_bus_types = RouteBusType.objects.filter(bus_type=obj)
+    if vehicles.exists() or routes.exists() or route_bus_types.exists():
+        return Response(
+            {
+                'message': 'Bus type is in use. Remove the linked vehicles/routes before permanent deletion.',
+                'vehicles': [{'id': v.id, 'bus_reg_num': v.bus_reg_num} for v in vehicles],
+                'routes': [{'id': r.id, 'route_code': r.route_code} for r in routes],
+                'assigned_routes': [{'id': rbt.route_id} for rbt in route_bus_types],
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    name = obj.name
+    obj.delete()
+    logger.warning(
+        'Bus type permanently deleted: %s (ID: %s, company: %s)',
+        name,
+        pk,
+        company.id,
+    )
+    return Response({'message': 'Bus type permanently deleted'}, status=status.HTTP_200_OK)
+
+
 # ── Stage ─────────────────────────────────────────────────────────────────────
 
 @api_view(['GET'])

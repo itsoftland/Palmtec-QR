@@ -53,6 +53,7 @@ export default function VehicleCombined() {
   const [editingType, setEditingType] = useState(null);
   const [typeFormData, setTypeFormData] = useState(emptyBusTypeForm);
   const [typeSubmitting, setTypeSubmitting] = useState(false);
+  const [deletingTypeId, setDeletingTypeId] = useState(null);
 
   // ── Vehicles ─────────────────────────────────────────────────────────────────
   const [vehicles, setVehicles] = useState([]);
@@ -187,6 +188,30 @@ export default function VehicleCombined() {
       window.alert((data.errors ? Object.values(data.errors)[0][0] : data.message) || 'Validation failed');
     } finally {
       setTypeSubmitting(false);
+    }
+  };
+
+  const handlePermanentTypeDelete = async (type) => {
+    if (!window.confirm(`Permanently delete bus type "${type.name}"? This cannot be undone.`)) return;
+
+    setDeletingTypeId(type.id);
+    try {
+      await api.delete(`${BASE_URL}/masterdata/bus-types/permanently-delete/${type.id}`);
+      cacheManager.invalidate(BUS_TYPES_CACHE_KEY);
+      await loadBusTypes(true);
+    } catch (err) {
+      const data = err.response?.data;
+      const vehicles = data?.vehicles?.map(v => v.bus_reg_num).join(', ');
+      const routes = data?.routes?.map(r => r.route_code).join(', ');
+      window.alert(
+        [
+          data?.message || 'Unable to permanently delete bus type.',
+          vehicles && `Vehicles: ${vehicles}`,
+          routes && `Routes: ${routes}`,
+        ].filter(Boolean).join('\n')
+      );
+    } finally {
+      setDeletingTypeId(null);
     }
   };
 
@@ -639,6 +664,11 @@ export default function VehicleCombined() {
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button onClick={() => openTypeView(type)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Eye size={14} /></button>
                                   <button onClick={() => openTypeEdit(type)} className="p-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors"><Pencil size={14} /></button>
+                                  <button onClick={() => handlePermanentTypeDelete(type)} title="Permanently delete"
+                                    aria-label={`Permanently delete ${type.name}`} disabled={deletingTypeId === type.id}
+                                    className="p-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                    <Trash2 size={14} />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
