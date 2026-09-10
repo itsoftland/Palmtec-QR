@@ -1,6 +1,7 @@
 
 import logging
 import os
+import re
 import struct
 from datetime import datetime, date, time as dt_time
 
@@ -265,3 +266,100 @@ def uploadExpenseDat(request):
     except Exception as e:
         logger.exception("ExpenseDat upload failed: %s", e)
         return JsonResponse({'error': 'Upload failed'}, status=500)
+
+
+# Files the APK reads off the ETM device and uploads here as-is (no on-device
+# parsing) — core files present on every read, plus dynamically discovered
+# ticket/transaction files (TKTS01.DAT, TKTS02.DAT, ... vary by device).
+_CORE_UPLOAD_NAMES = {
+    'VERSION.DAT', 'STATUS.DAT', 'BUS.DAT', 'RPT01.DAT',
+    'ODOMETER.DAT', 'EXPENSE.DAT', 'INSPECTOR.DAT',
+}
+_DYNAMIC_UPLOAD_NAMES = {'PASS.PAS', 'T.CON', 'FAREWISE.DAT', 'PRM'}
+
+
+def _is_allowed_device_file(filename):
+    name = filename.upper()
+    if name in _CORE_UPLOAD_NAMES or name in _DYNAMIC_UPLOAD_NAMES:
+        return True
+    return name.startswith('TKTS') and name.endswith('.DAT')
+
+
+def _safe_path_segment(value, fallback):
+    value = re.sub(r'[^A-Za-z0-9_-]+', '_', str(value).strip()) if value else ''
+    return value or fallback
+
+
+# POST /ticket-app/apk/upload/device-data
+# Accepts one or more raw device files (multipart, any field name) from the
+# APK's device read sequence and saves them to disk unmodified — no parsing.
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def uploadDeviceData(request):
+    user = request.user
+
+    company = getattr(user, 'company', None)
+    if not company:
+        return JsonResponse({'error': 'No company linked to user'}, status=400)
+
+    uploaded_files = list(request.FILES.values())
+    if not uploaded_files:
+        return JsonResponse({'error': 'No file provided'}, status=400)
+
+    serial_number = request.data.get('serialnumber')
+    if not serial_number:
+        return JsonResponse({'error': 'Serial number not provided'}, status=400)
+
+    from ...models import ETMDevice
+
+    try:
+        device = ETMDevice.objects.get(company=company, serial_number=serial_number)
+    except ETMDevice.DoesNotExist:
+        return JsonResponse({'error': 'Device not found for company'}, status=404)
+
+    palmtec_id = device.palmtec_id
+
+    now = timezone.now()
+    company_folder  = _safe_path_segment(company.company_name, company.company_id or 'unknown_company')
+    username_folder = _safe_path_segment(user.username, 'unknown_user')
+    palmtec_folder  = _safe_path_segment(palmtec_id, 'unknown_palmtec_id')
+    # DEVICE_DATA_UPLOAD_ROOT = settings.MEDIA_ROOT
+    # DEVICE_DATA_UPLOAD_ROOT = r'D:\IIS PUBLISHES\PALMTECQR\BUSTICKETING_DEMO\uploads'
+    DEVICE_DATA_UPLOAD_ROOT = r'D:\LOGS\PALMTECQR'
+    upload_dir = os.path.join(
+        DEVICE_DATA_UPLOAD_ROOT, 'device_data', company_folder, username_folder, palmtec_folder, now.strftime('%Y-%m-%d')
+    )
+
+    saved = []
+    rejected = []
+
+    try:
+        os.makedirs(upload_dir, exist_ok=True)
+
+        for uploaded_file in uploaded_files:
+            filename = uploaded_file.name
+            if not _is_allowed_device_file(filename):
+                rejected.append(filename)
+                continue
+
+            file_path = os.path.join(upload_dir, f"{now.strftime('%H-%M-%S')}_{filename}")
+            with open(file_path, 'wb') as f:
+                for chunk in uploaded_file.chunks():
+                    f.write(chunk)
+
+            saved.append(filename)
+
+        logger.info(
+            "Device data upload by %s (palmtec_id=%s): saved=%s rejected=%s",
+            user, palmtec_id, saved, rejected,
+        )
+
+        return JsonResponse(
+            {'status': 'ok', 'saved': saved, 'rejected': rejected}, status=200
+        )
+
+    except Exception as e:
+        logger.exception("Device data upload failed: %s", e)
+        return JsonResponse({'error': 'Upload failed'}, status=500)
+
+
