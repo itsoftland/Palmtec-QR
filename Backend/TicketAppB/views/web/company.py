@@ -1563,6 +1563,7 @@ def get_admin_dashboard_data(request):
             validating=Count(Case(When(authentication_status=Company.AuthStatus.VALIDATING, then=1), output_field=IntegerField())),
             expired=Count(Case(When(authentication_status=Company.AuthStatus.EXPIRED, then=1), output_field=IntegerField())),
             blocked=Count(Case(When(authentication_status=Company.AuthStatus.BLOCKED, then=1), output_field=IntegerField())),
+            license_expired=Count(Case(When(product_to_date__lt=timezone.now(), then=1), output_field=IntegerField())),
         )
         dashboard_data = {
             "company_summary": {},
@@ -1579,9 +1580,10 @@ def get_admin_dashboard_data(request):
             "validating_companies": company_counts['validating'],
             "expired_companies": company_counts['expired'],
             "blocked_companies": company_counts['blocked'],
+            "license_expired_companies": company_counts['license_expired'],
         })
 
-        all_non_admin_users = User.objects.filter(is_superuser=False).count()
+        all_non_admin_users = User.objects.filter(is_superuser=False, company__isnull=False).count()
         users_by_company_qs = (
             User.objects.filter(is_superuser=False)
             .values('company__company_name')

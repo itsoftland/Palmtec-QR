@@ -10,6 +10,7 @@ const STATUS_COLORS = {
   validating: "#2563eb",
   expired: "#d97706",
   blocked: "#64748b",
+  licenseExpired: "#b91c1c",
 };
 
 export default function AdminHome() {
@@ -80,7 +81,8 @@ export default function AdminHome() {
             states={[
               { label: "Validated", value: company?.validated_companies, color: STATUS_COLORS.validated },
               { label: "Unvalidated", value: company?.unvalidated_companies, color: STATUS_COLORS.unvalidated },
-              { label: "Expired", value: company?.expired_companies, color: STATUS_COLORS.expired },
+              // { label: "Expired", value: company?.expired_companies, color: STATUS_COLORS.expired },
+              { label: "Expired", value: company?.license_expired_companies, color: STATUS_COLORS.licenseExpired },
             ]}
           />
           <StateBreakdownCard
