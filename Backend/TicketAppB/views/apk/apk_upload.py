@@ -1,4 +1,5 @@
 
+import ftplib
 import logging
 import os
 import re
@@ -290,6 +291,34 @@ def _safe_path_segment(value, fallback):
     return value or fallback
 
 
+# ── Remote FTP mirror ─────────────────────────────────────────────────────────
+_FTP_HOST     = '124.124.79.122'
+_FTP_USER     = 'silftp'
+_FTP_PASSWORD = 'silftp'
+_FTP_PORT     = 21
+_FTP_ROOT     = 'PalmtecQr'
+
+
+def _ftp_upload_files(remote_subdirs, files):
+    """files: list of (filename, local_path). Mirrors upload_dir under _FTP_ROOT."""
+    ftp = ftplib.FTP()
+    ftp.connect(_FTP_HOST, _FTP_PORT, timeout=30)
+    ftp.login(_FTP_USER, _FTP_PASSWORD)
+    try:
+        for part in [_FTP_ROOT] + remote_subdirs:
+            try:
+                ftp.cwd(part)
+            except ftplib.error_perm:
+                ftp.mkd(part)
+                ftp.cwd(part)
+
+        for filename, local_path in files:
+            with open(local_path, 'rb') as f:
+                ftp.storbinary(f'STOR {filename}', f)
+    finally:
+        ftp.quit()
+
+
 # POST /ticket-app/apk/upload/device-data
 # Accepts one or more raw device files (multipart, any field name) from the
 # APK's device read sequence and saves them to disk unmodified — no parsing.
@@ -332,6 +361,7 @@ def uploadDeviceData(request):
 
     saved = []
     rejected = []
+    saved_paths = []
 
     try:
         os.makedirs(upload_dir, exist_ok=True)
@@ -348,11 +378,21 @@ def uploadDeviceData(request):
                     f.write(chunk)
 
             saved.append(filename)
+            saved_paths.append((f"{now.strftime('%H-%M-%S')}_{filename}", file_path))
 
         logger.info(
             "Device data upload by %s (palmtec_id=%s): saved=%s rejected=%s",
             user, palmtec_id, saved, rejected,
         )
+
+        if saved_paths:
+            try:
+                _ftp_upload_files(
+                    ['device_data', company_folder, username_folder, palmtec_folder, now.strftime('%Y-%m-%d')],
+                    saved_paths,
+                )
+            except Exception as ftp_err:
+                logger.exception("Device data FTP mirror failed: %s", ftp_err)
 
         return JsonResponse(
             {'status': 'ok', 'saved': saved, 'rejected': rejected}, status=200
