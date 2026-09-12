@@ -407,7 +407,7 @@ export default function Login() {
                     type="text"
                     placeholder="e.g. admin"
                     value={username}
-                    minLength={3}
+                    minLength={1}
                     maxLength={30}
                     onChange={e => {
                       const value = e.target.value;
@@ -474,7 +474,7 @@ export default function Login() {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="eg: 1234"
                     value={password}
-                    minLength={3}
+                    minLength={1}
                     maxLength={30}
                     onChange={e => {
                       const value = e.target.value;

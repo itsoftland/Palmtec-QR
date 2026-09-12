@@ -454,9 +454,9 @@ export default function UserListing() {
   };
 
   const createFormValid = modalMode !== 'create' || (
-    formData.username.trim().length >= 3 &&
+    formData.username.trim().length >= 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()) &&
-    formData.password.length >= 8 &&
+    formData.password.length >= 1 &&
     (!(!isCompanyAdmin && formData.role === 'company_admin') || !!formData.company_id) &&
     (!(isSuperadmin && formData.role === 'dealer_admin') || !!formData.dealer_id) &&
     (!(formData.role === 'executive') || !!formData.state) &&
@@ -465,7 +465,7 @@ export default function UserListing() {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    if (pw.length < 6) { window.alert('Password must be at least 6 characters'); return; }
+    if (pw.length < 1) { window.alert('Password is required'); return; }
     if (pw !== confirmPw) return;
     setSubmitting(true);
     try {
@@ -977,7 +977,7 @@ export default function UserListing() {
                 value={formData.username}
                 onChange={handleInputChange}
                 required
-                minLength={3}
+                minLength={1}
                 maxLength={20}
                 placeholder="e.g. ravi.kumar"
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -1116,10 +1116,6 @@ export default function UserListing() {
               <label className="text-sm font-medium text-slate-700 flex items-center gap-1">
                 Password <span className="text-rose-500">*</span>
               </label>
-              <p className="text-xs text-slate-400">Minimum 8 characters</p>
-              {formData.password.length > 0 && formData.password.length < 8 && (
-                <p className="text-xs text-rose-600">Must be at least 8 characters</p>
-              )}
               {/* <input
                 type="text"
                 name="password"
@@ -1138,7 +1134,7 @@ export default function UserListing() {
                   value={formData.password}
                   onChange={handleInputChange}
                   required
-                  minLength={8}
+                  minLength={1}
                   maxLength={20}
                   placeholder="Temporary password"
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -1204,9 +1200,6 @@ export default function UserListing() {
               <label className="text-sm font-medium text-slate-700 flex items-center gap-1">
                 New Password <span className="text-rose-500">*</span>
               </label>
-              {pw.length > 0 && pw.length < 8 && (
-                <p className="text-xs text-rose-600">Must be at least 8 characters</p>
-              )}
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'}
@@ -1214,7 +1207,7 @@ export default function UserListing() {
                   onChange={e => setPw(e.target.value)}
                   placeholder="Enter new password"
                   required
-                  minLength={8}
+                  minLength={1}
                   maxLength={20}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
@@ -1242,7 +1235,7 @@ export default function UserListing() {
                   onChange={e => setConfirmPw(e.target.value)}
                   placeholder="Re-enter password"
                   required
-                  minLength={8}
+                  minLength={1}
                   maxLength={20}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
@@ -1256,7 +1249,7 @@ export default function UserListing() {
               </div>
             </div>
 
-            {pw && confirmPw && pw === confirmPw && pw.length >= 6 && (
+            {pw && confirmPw && pw === confirmPw && (
               <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs text-emerald-700">
                 <CheckCircle2 size={13} /> Passwords match
               </div>
@@ -1272,7 +1265,7 @@ export default function UserListing() {
               </button>
               <button
                 type="submit"
-                disabled={!pw || !confirmPw || pw !== confirmPw || pw.length < 6 || submitting}
+                disabled={!pw || !confirmPw || pw !== confirmPw || submitting}
                 className="inline-flex items-center gap-1.5 h-9 px-4 text-sm rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white cursor-pointer transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <KeyRound size={14} />

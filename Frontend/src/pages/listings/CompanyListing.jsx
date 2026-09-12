@@ -1629,10 +1629,10 @@ export default function CompanyListing() {
                         }}
                         placeholder="acme_admin"
                         className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
-                        minLength={3}
+                        minLength={1}
                         maxLength={20}
-                        pattern="^[a-z0-9_]{3,20}$"
-                        title="Username must be 3-20 characters and contain only lowercase letters, numbers, and underscores."
+                        pattern="^[a-z0-9_]{1,20}$"
+                        title="Username must be 1-20 characters and contain only lowercase letters, numbers, and underscores."
                         required
                       />
                     </div>
@@ -1678,7 +1678,7 @@ export default function CompanyListing() {
                           }}
                           placeholder="Password"
                           className="w-full px-3 py-2 pr-9 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
-                          minLength={8}
+                          minLength={1}
                           maxLength={20}
                           required
                         />

@@ -1524,7 +1524,7 @@ export default function RouteListing() {
         subtitle="Configure routes, stages, and fare structures"
         actions={
           <div className="flex items-center gap-2">
-            {/* <Btn variant="secondary" icon={Upload} onClick={openImportModal}>Import Excel</Btn> */}
+            <Btn variant="secondary" icon={Upload} onClick={openImportModal}>Import Excel</Btn>
             <Btn icon={Plus} onClick={openWizard}>Create Route</Btn>
           </div>
         }
