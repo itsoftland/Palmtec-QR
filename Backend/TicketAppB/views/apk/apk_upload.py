@@ -4,7 +4,6 @@ import logging
 import os
 import re
 import struct
-import tempfile
 from datetime import datetime, date, time as dt_time
 
 from django.conf import settings
@@ -17,12 +16,6 @@ from rest_framework.permissions import IsAuthenticated
 from ...permissions import LicensePermission
 
 logger = logging.getLogger('ticket.palmtec.apk_upload')
-
-# Root of the raw device-file mirror written by uploadDeviceData() below —
-# device_data/<company>/<username>/<palmtec_id>/<YYYY-MM-DD>/HH-MM-SS_<FILENAME>
-# DEVICE_DATA_UPLOAD_ROOT = settings.MEDIA_ROOT
-# DEVICE_DATA_UPLOAD_ROOT = r'D:\IIS PUBLISHES\PALMTECQR\BUSTICKETING_DEMO\uploads'
-DEVICE_DATA_UPLOAD_ROOT = r'D:\LOGS\PALMTECQR'
 
 # ── Struct definitions ────────────────────────────────────────────────────────
 # Little-endian, packed (no alignment padding) — matches ETM device binary layout.
@@ -359,6 +352,9 @@ def uploadDeviceData(request):
     company_folder  = _safe_path_segment(company.company_name, company.company_id or 'unknown_company')
     username_folder = _safe_path_segment(user.username, 'unknown_user')
     palmtec_folder  = _safe_path_segment(palmtec_id, 'unknown_palmtec_id')
+    # DEVICE_DATA_UPLOAD_ROOT = settings.MEDIA_ROOT
+    # DEVICE_DATA_UPLOAD_ROOT = r'D:\IIS PUBLISHES\PALMTECQR\BUSTICKETING_DEMO\uploads'
+    DEVICE_DATA_UPLOAD_ROOT = r'D:\LOGS\PALMTECQR'
     upload_dir = os.path.join(
         DEVICE_DATA_UPLOAD_ROOT, 'device_data', company_folder, username_folder, palmtec_folder, now.strftime('%Y-%m-%d')
     )
@@ -405,5 +401,4 @@ def uploadDeviceData(request):
     except Exception as e:
         logger.exception("Device data upload failed: %s", e)
         return JsonResponse({'error': 'Upload failed'}, status=500)
-
 
