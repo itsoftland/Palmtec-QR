@@ -608,7 +608,7 @@ class Settings(models.Model):
     gprs_enable_message = models.CharField(max_length=10, default='0')
     sendbill_enable = models.CharField(max_length=10, default='0')
 
-    currency = models.CharField(max_length=10, default="RS.")
+    currency = models.CharField(max_length=10, default="Rs.")
 
     # ETM concession ratios & flags (sourced from MDB import)
     ladies_ratio  = models.IntegerField(default=0, help_text="Ladies concession % (LadiPer)")
