@@ -42,6 +42,7 @@ class DealerSerializer(serializers.ModelSerializer):
             'total_user_count',
             'premium_user_count',
             'intermediate_user_count',
+            'basic_user_count',
             # License error
             'error_message',
             'created_by',
@@ -58,6 +59,7 @@ class DealerSerializer(serializers.ModelSerializer):
             'total_user_count',
             'premium_user_count',
             'intermediate_user_count',
+            'basic_user_count',
             'error_message',
             'created_by',
             'created_at',

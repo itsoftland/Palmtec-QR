@@ -25,7 +25,7 @@ class Company(models.Model):
       total_user_count     — max users of any tier
       premium_user_count   — max premium-tier users
       intermediate_user_count — max intermediate-tier users
-      (basic users fill the remainder up to total_user_count; no explicit count)
+      basic_user_count     — max basic-tier users (BasicUserCount from license server)
     """
 
     class AuthStatus(models.TextChoices):
@@ -96,6 +96,8 @@ class Company(models.Model):
     # premium_user_count / intermediate_user_count: concurrent sub-limits by tier.
     premium_user_count      = models.IntegerField(default=0, null=True, blank=True)
     intermediate_user_count = models.IntegerField(default=0, null=True, blank=True)
+    # basic_user_count: concurrent sub-limit for basic tier (BasicUserCount from license server).
+    basic_user_count         = models.IntegerField(default=0, null=True, blank=True)
     # number_of_licences: total capacity ceiling from the license server registration page.
     # PalmtecCount + TotalUserCount must not exceed this value.
     number_of_licences      = models.IntegerField(default=0, null=True, blank=True)
@@ -233,6 +235,7 @@ class Dealer(models.Model):
     total_user_count        = models.IntegerField(default=0)
     premium_user_count      = models.IntegerField(default=0)
     intermediate_user_count = models.IntegerField(default=0)
+    basic_user_count        = models.IntegerField(default=0)
     number_of_licences      = models.IntegerField(default=0, null=True, blank=True)
     error_message           = models.CharField(max_length=500, null=True, blank=True)
 
@@ -317,23 +320,23 @@ class Dealer(models.Model):
             total=Sum('total_user_count'),
             premium=Sum('premium_user_count'),
             inter=Sum('intermediate_user_count'),
+            basic=Sum('basic_user_count'),
         )
         return {
             'total':   result['total']   or 0,
             'premium': result['premium'] or 0,
             'inter':   result['inter']   or 0,
+            'basic':   result['basic']   or 0,
         }
 
     @property
     def users_slots_remaining(self):
-        given        = self.users_given_to_companies
-        dealer_basic = max(0, self.total_user_count - self.premium_user_count - self.intermediate_user_count)
-        given_basic  = max(0, given['total'] - given['premium'] - given['inter'])
+        given = self.users_given_to_companies
         return {
             'total':   max(0, self.total_user_count        - given['total']),
             'premium': max(0, self.premium_user_count      - given['premium']),
             'inter':   max(0, self.intermediate_user_count - given['inter']),
-            'basic':   max(0, dealer_basic - given_basic),
+            'basic':   max(0, self.basic_user_count         - given['basic']),
         }
 
 

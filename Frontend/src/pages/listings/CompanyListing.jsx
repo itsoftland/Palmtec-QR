@@ -1037,6 +1037,7 @@ export default function CompanyListing() {
                         { label: 'Total User Slots', value: c.total_user_count || 0 },
                         { label: 'Premium Slots', value: c.premium_user_count || 0 },
                         { label: 'Intermediate Slots', value: c.intermediate_user_count || 0 },
+                        { label: 'Basic Slots', value: c.basic_user_count || 0 },
                       ].map(({ label, value }) => (
                         <div key={label} className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
                           <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-400">{label}</p>
@@ -1256,6 +1257,7 @@ export default function CompanyListing() {
                     <DiffRow label="Total User Slots" current={d.current?.total_user_count} incoming={d.incoming?.total_user_count} inUse={d.in_use?.active_sessions_total} />
                     <DiffRow label="Premium User Slots" current={d.current?.premium_user_count} incoming={d.incoming?.premium_user_count} inUse={d.in_use?.active_sessions_premium} />
                     <DiffRow label="Intermediate User Slots" current={d.current?.intermediate_user_count} incoming={d.incoming?.intermediate_user_count} inUse={d.in_use?.active_sessions_intermediate} />
+                    <DiffRow label="Basic User Slots" current={d.current?.basic_user_count} incoming={d.incoming?.basic_user_count} />
                     <DiffRow label="Valid Till" current={d.current?.product_to_date} incoming={d.incoming?.product_to_date} />
                   </div>
                 )}

@@ -46,6 +46,27 @@ def check_datetime(date_str):
         return None
 
 
+def extract_basic_user_count(auth_data, total=0, premium=0, inter=0):
+    """
+    Pull the basic-tier count out of a license server response.
+    Server field casing for this key isn't confirmed from a live sample, so match
+    'BasicUserCount' case-insensitively rather than a single exact key. If the
+    server doesn't send the field at all, fall back to total - premium - intermediate
+    (the pre-existing derived behaviour) instead of silently zeroing it out.
+    """
+    for k, v in (auth_data or {}).items():
+        if k.lower() == 'basicusercount':
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                break
+    logger.warning(
+        f"BasicUserCount not found in license server response (keys: {list((auth_data or {}).keys())}); "
+        f"deriving basic count from total - premium - intermediate instead."
+    )
+    return max(0, total - premium - inter)
+
+
 def _check_user_count_reduction(company, new_total, new_premium, new_inter):
     """
     Block reducing user counts below currently assigned users.
@@ -506,6 +527,9 @@ def get_company_by_company_id(request, company_id):
     # Only license/config fields are available — returned for the confirm banner.
     # The user fills in company details manually in the confirm step form.
     # TODO: update these keys when license server is updated to new field names
+    _total   = int(auth_data.get('TotalUserCount', 0))
+    _premium = int(auth_data.get('PremiumUserCount', 0))
+    _inter   = int(auth_data.get('IntermediateUserCount', 0))
     return Response(
         {
             'message': 'Success',
@@ -516,9 +540,10 @@ def get_company_by_company_id(request, company_id):
                 'product_to_date':       product_to_date,
                 'number_of_licences':    int(auth_data.get('NumberOfLicence', 0)),
                 'palmtec_count':         int(auth_data.get('PalmtecCount', 0)),
-                'total_user_count':      int(auth_data.get('TotalUserCount', 0)),
-                'premium_user_count':    int(auth_data.get('PremiumUserCount', 0)),
-                'intermediate_user_count': int(auth_data.get('IntermediateUserCount', 0)),
+                'total_user_count':      _total,
+                'premium_user_count':    _premium,
+                'intermediate_user_count': _inter,
+                'basic_user_count':      extract_basic_user_count(auth_data, _total, _premium, _inter),
                 'is_expired':            expired,
             }
         },
@@ -627,6 +652,9 @@ def import_company(request):
         return Response({'message': 'Company name is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # ── Create Company record ────────────────────────────────────────────────
+    _total   = safe_int(auth_data.get('TotalUserCount'), 0)
+    _premium = safe_int(auth_data.get('PremiumUserCount'), 0)
+    _inter   = safe_int(auth_data.get('IntermediateUserCount'), 0)
     company = Company.objects.create(
         **form_data,
         authentication_status   = mapped_status,
@@ -637,9 +665,10 @@ def import_company(request):
         product_to_date         = product_to_date,
         number_of_licences      = safe_int(auth_data.get('NumberOfLicence'), 0),
         palmtec_count           = safe_int(auth_data.get('PalmtecCount'), 0),
-        total_user_count        = safe_int(auth_data.get('TotalUserCount'), 0),
-        premium_user_count      = safe_int(auth_data.get('PremiumUserCount'), 0),
-        intermediate_user_count = safe_int(auth_data.get('IntermediateUserCount'), 0),
+        total_user_count        = _total,
+        premium_user_count      = _premium,
+        intermediate_user_count = _inter,
+        basic_user_count        = extract_basic_user_count(auth_data, _total, _premium, _inter),
         client_type             = 'direct',
         created_by              = user,
     )
@@ -859,6 +888,7 @@ def create_company(request):
                 total_user_count=alloc_total,
                 premium_user_count=alloc_premium,
                 intermediate_user_count=alloc_inter,
+                basic_user_count=alloc_basic,
                 authentication_status=Company.AuthStatus.APPROVED,
                 product_from_date=dealer.product_from_date,
                 product_to_date=dealer.product_to_date,
@@ -1201,7 +1231,8 @@ def update_company_details(request, pk):
         company.total_user_count        = new_total
         company.premium_user_count      = new_premium
         company.intermediate_user_count = new_inter
-        company.save(update_fields=list(pool_fields))
+        company.basic_user_count        = new_total - new_premium - new_inter
+        company.save(update_fields=list(pool_fields) + ['basic_user_count'])
         logger.info(
             f"Dealer '{user.username}' updated license allocation for company "
             f"'{company.company_name}' (ID: {pk}): palmtec={new_palmtec}, total={new_total}, "
@@ -1663,6 +1694,7 @@ def _build_company_sync_diff(company, auth_data):
     incoming_total   = _si(auth_data.get('TotalUserCount'))
     incoming_premium = _si(auth_data.get('PremiumUserCount'))
     incoming_inter   = _si(auth_data.get('IntermediateUserCount'))
+    incoming_basic   = extract_basic_user_count(auth_data, incoming_total, incoming_premium, incoming_inter)
 
     # Consistency check
     error = None
@@ -1700,6 +1732,7 @@ def _build_company_sync_diff(company, auth_data):
             'total_user_count':        company.total_user_count or 0,
             'premium_user_count':      company.premium_user_count or 0,
             'intermediate_user_count': company.intermediate_user_count or 0,
+            'basic_user_count':        company.basic_user_count or 0,
             'product_from_date':       str(company.product_from_date) if company.product_from_date else None,
             'product_to_date':         str(company.product_to_date)   if company.product_to_date   else None,
         },
@@ -1709,6 +1742,7 @@ def _build_company_sync_diff(company, auth_data):
             'total_user_count':        incoming_total,
             'premium_user_count':      incoming_premium,
             'intermediate_user_count': incoming_inter,
+            'basic_user_count':        incoming_basic,
             'product_from_date':       str(incoming_from) if incoming_from else None,
             'product_to_date':         str(incoming_to)   if incoming_to   else None,
             'authentication_status':   auth_data.get('Authenticationstatus'),
@@ -1835,6 +1869,7 @@ def sync_company_license_confirm(request, pk):
     new_total   = _si(auth_data.get('TotalUserCount'))
     new_premium = _si(auth_data.get('PremiumUserCount'))
     new_inter   = _si(auth_data.get('IntermediateUserCount'))
+    new_basic   = extract_basic_user_count(auth_data, new_total, new_premium, new_inter)
 
     ok, errs = _check_user_count_reduction(company, new_total, new_premium, new_inter)
     if not ok:
@@ -1848,6 +1883,7 @@ def sync_company_license_confirm(request, pk):
     company.total_user_count        = new_total
     company.premium_user_count      = new_premium
     company.intermediate_user_count = new_inter
+    company.basic_user_count        = new_basic
     company.product_from_date = _parse_license_date(raw_from) or company.product_from_date
     company.product_to_date   = _parse_license_date(raw_to)   or company.product_to_date
     company.authentication_status   = new_auth_status

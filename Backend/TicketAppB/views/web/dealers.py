@@ -177,6 +177,8 @@ def _populate_dealer_counts(dealer, auth_data):
     new_total    = _safe_int(auth_data.get('TotalUserCount'))
     new_premium  = _safe_int(auth_data.get('PremiumUserCount'))
     new_inter    = _safe_int(auth_data.get('IntermediateUserCount'))
+    from .company import extract_basic_user_count
+    new_basic    = extract_basic_user_count(auth_data, new_total, new_premium, new_inter)
 
     # Hard block: profile counts must not exceed NumberOfLicence
     if new_number_of_licences > 0 and (new_palmtec + new_total) > new_number_of_licences:
@@ -195,6 +197,7 @@ def _populate_dealer_counts(dealer, auth_data):
     dealer.total_user_count        = new_total
     dealer.premium_user_count      = new_premium
     dealer.intermediate_user_count = new_inter
+    dealer.basic_user_count        = new_basic
     dealer.error_message           = None
     if dealer.authentication_status == Dealer.AuthStatus.APPROVED:
         dealer.is_active = True
@@ -561,8 +564,6 @@ def dealer_dashboard(request):
     # ── Pool balance (live-computed from child companies) ─────────────────────
     user_slots   = dealer_obj.users_slots_remaining
     given        = dealer_obj.users_given_to_companies
-    dealer_basic = max(0, dealer_obj.total_user_count - dealer_obj.premium_user_count - dealer_obj.intermediate_user_count)
-    given_basic  = max(0, given['total'] - given['premium'] - given['inter'])
 
     pool = {
         'palmtec': {
@@ -586,8 +587,8 @@ def dealer_dashboard(request):
             'remaining': user_slots['inter'],
         },
         'basic': {
-            'total':     dealer_basic,
-            'given':     given_basic,
+            'total':     dealer_obj.basic_user_count,
+            'given':     given['basic'],
             'remaining': user_slots['basic'],
         },
         'license_valid_to': str(dealer_obj.product_to_date) if dealer_obj.product_to_date else None,
@@ -643,6 +644,8 @@ def _build_dealer_sync_diff(dealer, auth_data):
     new_total   = _safe_int(auth_data.get('TotalUserCount'))
     new_premium = _safe_int(auth_data.get('PremiumUserCount'))
     new_inter   = _safe_int(auth_data.get('IntermediateUserCount'))
+    from .company import extract_basic_user_count
+    new_basic   = extract_basic_user_count(auth_data, new_total, new_premium, new_inter)
 
     error = None
     if new_nol > 0 and (new_palmtec + new_total) > new_nol:
@@ -669,6 +672,7 @@ def _build_dealer_sync_diff(dealer, auth_data):
             'total_user_count':        dealer.total_user_count,
             'premium_user_count':      dealer.premium_user_count,
             'intermediate_user_count': dealer.intermediate_user_count,
+            'basic_user_count':        dealer.basic_user_count,
             'slots_remaining':            dealer.slots_remaining,
             'devices_total':              dealer.devices_total,
             'devices_in_pool':            dealer.devices_in_pool,
@@ -683,6 +687,7 @@ def _build_dealer_sync_diff(dealer, auth_data):
             'total_user_count':        new_total,
             'premium_user_count':      new_premium,
             'intermediate_user_count': new_inter,
+            'basic_user_count':        new_basic,
             'product_from_date': str(incoming_from) if incoming_from else None,
             'product_to_date':   str(incoming_to)   if incoming_to   else None,
             'authentication_status': auth_data.get('Authenticationstatus'),

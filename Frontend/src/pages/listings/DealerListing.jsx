@@ -986,6 +986,7 @@ export default function DealerListing() {
               <DiffRow label="Total Users" current={syncDiff.current.total_user_count} incoming={syncDiff.incoming.total_user_count} inUse={syncDiff.in_use.total_users_allocated} />
               <DiffRow label="Premium Users" current={syncDiff.current.premium_user_count} incoming={syncDiff.incoming.premium_user_count} inUse={syncDiff.in_use.premium_users_allocated} />
               <DiffRow label="Intermediate Users" current={syncDiff.current.intermediate_user_count} incoming={syncDiff.incoming.intermediate_user_count} inUse={syncDiff.in_use.intermediate_users_allocated} />
+              <DiffRow label="Basic Users" current={syncDiff.current.basic_user_count} incoming={syncDiff.incoming.basic_user_count} />
               <DiffRow label="License From" current={syncDiff.current.product_from_date} incoming={syncDiff.incoming.product_from_date} />
               <DiffRow label="License To" current={syncDiff.current.product_to_date} incoming={syncDiff.incoming.product_to_date} />
 

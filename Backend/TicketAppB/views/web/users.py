@@ -92,7 +92,7 @@ def _check_tier_availability(company, new_tier, exclude_user_id=None):
 
     elif new_tier == UserTier.BASIC:
         if total_limit > 0:
-            basic_limit = total_limit - (company.premium_user_count or 0) - (company.intermediate_user_count or 0)
+            basic_limit = company.basic_user_count or 0
             basic_assigned = qs.filter(tier=UserTier.BASIC).count()
             if basic_limit <= 0:
                 return False, 'No basic slots configured for this company.'

@@ -47,6 +47,7 @@ class CompanySerializer(serializers.ModelSerializer):
             'total_user_count',
             'premium_user_count',
             'intermediate_user_count',
+            'basic_user_count',
             # License error (set when NumberOfLicence hard-block triggers)
             'error_message',
             # Status
@@ -71,6 +72,7 @@ class CompanySerializer(serializers.ModelSerializer):
             'total_user_count',
             'premium_user_count',
             'intermediate_user_count',
+            'basic_user_count',
             'error_message',
             'created_by',
             'dealer',
