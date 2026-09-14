@@ -310,7 +310,7 @@ export default function CompanyListing() {
   // ── Create form completeness ──────────────────────────────────────────────
   const sec1 = !!(form.company_name && form.company_email && form.contact_person && form.contact_number);
   const sec2 = !!(form.address && form.state && form.district);
-  const sec3 = !!(form.user_username && form.user_email && form.user_password);
+  const sec3 = !!(form.user_username && form.user_email && form.user_password && form.user_password.length >= 6);
   // Pool validation errors (dealer_admin create only)
   const poolErrors = useMemo(() => {
     if (!isDealerAdmin || !dealerPool) return {};
@@ -1678,7 +1678,7 @@ export default function CompanyListing() {
                           }}
                           placeholder="Password"
                           className="w-full px-3 py-2 pr-9 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
-                          minLength={1}
+                          minLength={6}
                           maxLength={20}
                           required
                         />

@@ -456,7 +456,7 @@ export default function UserListing() {
   const createFormValid = modalMode !== 'create' || (
     formData.username.trim().length >= 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()) &&
-    formData.password.length >= 1 &&
+    formData.password.length >= 6 &&
     (!(!isCompanyAdmin && formData.role === 'company_admin') || !!formData.company_id) &&
     (!(isSuperadmin && formData.role === 'dealer_admin') || !!formData.dealer_id) &&
     (!(formData.role === 'executive') || !!formData.state) &&
@@ -465,7 +465,7 @@ export default function UserListing() {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    if (pw.length < 1) { window.alert('Password is required'); return; }
+    if (pw.length < 6) { window.alert('Password must be at least 6 characters'); return; }
     if (pw !== confirmPw) return;
     setSubmitting(true);
     try {
@@ -1134,7 +1134,7 @@ export default function UserListing() {
                   value={formData.password}
                   onChange={handleInputChange}
                   required
-                  minLength={1}
+                  minLength={6}
                   maxLength={20}
                   placeholder="Temporary password"
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -1207,7 +1207,7 @@ export default function UserListing() {
                   onChange={e => setPw(e.target.value)}
                   placeholder="Enter new password"
                   required
-                  minLength={1}
+                  minLength={6}
                   maxLength={20}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
@@ -1235,7 +1235,7 @@ export default function UserListing() {
                   onChange={e => setConfirmPw(e.target.value)}
                   placeholder="Re-enter password"
                   required
-                  minLength={1}
+                  minLength={6}
                   maxLength={20}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />

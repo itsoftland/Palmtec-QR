@@ -63,4 +63,7 @@ urlpatterns = [
     path('upload/expense-dat', _premium(apk_upload_views.uploadExpenseDat), name='upload_expense_dat'),
     path('upload/device-data', _premium(apk_upload_views.uploadDeviceData), name='upload_device_data'),
 
+    # device data download (data transfer — Premium tier required on the APK)
+    # path('download/device-data', _premium(apk_upload_views.downloadDeviceData), name='download_device_data'),
+
 ]

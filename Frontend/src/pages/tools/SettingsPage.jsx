@@ -12,7 +12,7 @@ import { PageHeader, SectionCard, SettToggle } from '@/components/design';
 const errCls = 'border-red-400 focus:ring-red-400';
 const okCls = 'border-slate-300 focus:ring-slate-500';
 
-const TextField = ({ label, name, value, onChange, placeholder = '', maxLength, loading = false, error = false, required = true }) => (
+const TextField = ({ label, name, value, onChange, placeholder = '', maxLength, loading = false, error = false, errorText = 'Required', required = true }) => (
   <div className="space-y-1.5">
     <label className="text-sm font-semibold text-slate-700">
       {label}{required && <span className="text-red-500"> *</span>}
@@ -26,7 +26,7 @@ const TextField = ({ label, name, value, onChange, placeholder = '', maxLength, 
           placeholder={placeholder} maxLength={maxLength}
           className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:border-transparent text-sm transition-all ${error ? errCls : okCls}`}
         />
-        {error && <p className="text-xs text-red-500">Required</p>}
+        {error && <p className="text-xs text-red-500">{errorText}</p>}
       </>
     )}
   </div>
@@ -249,6 +249,7 @@ const EMPTY_COMPANY_FORM = {
   st_max_amt: '', st_min_con: '',
   ladies_ratio: 0, senior_ratio: 0,
   big_font: false, refund_enable: false,
+  currency: '',
   // remove device-only ST fields
   st_ratio: undefined, st_min_amt: undefined, exp_enable: undefined,
 };
@@ -483,6 +484,14 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <ConstrainedField label="Stage Updation Msg" name="stage_updation_msg" value={formData.stage_updation_msg} onChange={onChange} maxLen={3} placeholder="e.g. 0" loading={loading} error={err('stage_updation_msg')} />
           <ConstrainedField label="Default Stage" name="default_stage" value={formData.default_stage} onChange={onChange} maxLen={4} placeholder="e.g. 1" loading={loading} error={err('default_stage')} />
+          {!isDevice && (
+            <TextField
+              label="Currency" name="currency" value={formData.currency} onChange={onChange}
+              maxLength={3} placeholder="e.g. RS" loading={loading} required={false}
+              error={err('currency') || (!!formData.currency && formData.currency.length < 3)}
+              errorText="3-letter code required"
+            />
+          )}
         </div>
       </SectionCard>
 

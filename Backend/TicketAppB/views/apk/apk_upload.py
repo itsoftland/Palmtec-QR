@@ -1,9 +1,11 @@
 
 import ftplib
+import io
 import logging
 import os
 import re
 import struct
+import tempfile
 from datetime import datetime, date, time as dt_time
 
 from django.conf import settings
@@ -319,6 +321,27 @@ def _ftp_upload_files(remote_subdirs, files):
         ftp.quit()
 
 
+def _ftp_list(ftp, remote_parts):
+    """Entry names under _FTP_ROOT/<remote_parts...>, or None if that path doesn't exist."""
+    try:
+        ftp.cwd('/')
+        for part in [_FTP_ROOT] + remote_parts:
+            ftp.cwd(part)
+        return ftp.nlst()
+    except ftplib.error_perm:
+        return None
+
+
+def _ftp_retrieve(ftp, remote_parts, filename):
+    """Bytes of _FTP_ROOT/<remote_parts...>/filename."""
+    ftp.cwd('/')
+    for part in [_FTP_ROOT] + remote_parts:
+        ftp.cwd(part)
+    buf = io.BytesIO()
+    ftp.retrbinary(f'RETR {filename}', buf.write)
+    return buf.getvalue()
+
+
 # POST /ticket-app/apk/upload/device-data
 # Accepts one or more raw device files (multipart, any field name) from the
 # APK's device read sequence and saves them to disk unmodified — no parsing.
@@ -401,4 +424,135 @@ def uploadDeviceData(request):
     except Exception as e:
         logger.exception("Device data upload failed: %s", e)
         return JsonResponse({'error': 'Upload failed'}, status=500)
+
+
+# Files pulled back from FTP that we know how to decode into DB rows.
+# Anything else on the FTP (VERSION.DAT, BUS.DAT, TKTS*.DAT, ...) has no
+# parser here and is left untouched — same "no on-device parsing" boundary
+# uploadDeviceData draws, just mirrored on the way back in.
+_IMPORTERS = {
+    'EXPENSE.DAT':  _parse_expense_dat,
+    'ODOMETER.DAT': _parse_odometer_dat,
+}
+
+
+# GET /ticket-app/apk/download/device-data?serialnumber=...&date=YYYY-MM-DD
+# Pulls previously uploaded raw device files back from the FTP mirror
+# (uploadDeviceData's destination) and imports the known ones (EXPENSE.DAT,
+# ODOMETER.DAT) into this company's DB. `date` is optional — omit it for the
+# most recent date available for the device.
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated, LicensePermission])
+# def downloadDeviceData(request):
+#     user = request.user
+
+#     company = getattr(user, 'company', None)
+#     if not company:
+#         return JsonResponse({'error': 'No company linked to user'}, status=400)
+
+#     serial_number = request.query_params.get('serialnumber')
+#     if not serial_number:
+#         return JsonResponse({'error': 'Serial number not provided'}, status=400)
+
+#     from ...models import ETMDevice
+
+#     try:
+#         device = ETMDevice.objects.get(company=company, serial_number=serial_number)
+#     except ETMDevice.DoesNotExist:
+#         return JsonResponse({'error': 'Device not found for company'}, status=404)
+
+#     palmtec_id = device.palmtec_id
+#     requested_date = request.query_params.get('date') or None
+
+#     company_folder = _safe_path_segment(company.company_name, company.company_id or 'unknown_company')
+#     palmtec_folder = _safe_path_segment(palmtec_id, 'unknown_palmtec_id')
+#     base_parts = ['device_data', company_folder]
+
+#     try:
+#         ftp = ftplib.FTP()
+#         ftp.connect(_FTP_HOST, _FTP_PORT, timeout=30)
+#         ftp.login(_FTP_USER, _FTP_PASSWORD)
+#     except Exception as e:
+#         logger.exception("Device data download FTP connect failed: %s", e)
+#         return JsonResponse({'error': 'Could not reach FTP server'}, status=502)
+
+#     try:
+#         usernames = _ftp_list(ftp, base_parts) or []
+
+#         # Uploads land under a per-uploader username folder, so a device's
+#         # files may be split across several usernames — gather dates from all.
+#         dates_by_user = {}
+#         for username in usernames:
+#             dates = _ftp_list(ftp, base_parts + [username, palmtec_folder])
+#             if dates:
+#                 dates_by_user[username] = dates
+
+#         if requested_date:
+#             target_date = requested_date
+#         else:
+#             all_dates = sorted({d for dates in dates_by_user.values() for d in dates})
+#             target_date = all_dates[-1] if all_dates else None
+
+#         if not target_date:
+#             return JsonResponse({'error': 'No device data found'}, status=404)
+
+#         imported = {}
+#         skipped_no_parser = []
+#         failed = []
+
+#         for username, dates in dates_by_user.items():
+#             if target_date not in dates:
+#                 continue
+#             file_parts = base_parts + [username, palmtec_folder, target_date]
+#             for filename in _ftp_list(ftp, file_parts) or []:
+#                 importer = _IMPORTERS.get(filename.upper())
+#                 if not importer:
+#                     skipped_no_parser.append(filename)
+#                     continue
+
+#                 tmp_path = None
+#                 try:
+#                     content = _ftp_retrieve(ftp, file_parts, filename)
+#                     with tempfile.NamedTemporaryFile(delete=False, suffix=f'_{filename}') as tmp:
+#                         tmp.write(content)
+#                         tmp_path = tmp.name
+
+#                     created, skipped = importer(tmp_path, company, palmtec_id)
+#                     entry = imported.setdefault(filename.upper(), {'created': 0, 'skipped': 0})
+#                     entry['created']  += created
+#                     entry['skipped']  += skipped
+#                 except Exception as file_err:
+#                     logger.exception("Device data import failed for %s: %s", filename, file_err)
+#                     failed.append(filename)
+#                 finally:
+#                     if tmp_path and os.path.exists(tmp_path):
+#                         os.remove(tmp_path)
+
+#         if not imported and not failed:
+#             return JsonResponse(
+#                 {'error': 'No importable device data found for requested date', 'skipped_no_parser': skipped_no_parser},
+#                 status=404,
+#             )
+
+#         logger.info(
+#             "Device data import by %s (palmtec_id=%s, date=%s): imported=%s failed=%s skipped=%s",
+#             user, palmtec_id, target_date, imported, failed, skipped_no_parser,
+#         )
+
+#         return JsonResponse({
+#             'status': 'ok',
+#             'date': target_date,
+#             'imported': imported,
+#             'failed': failed,
+#             'skipped_no_parser': skipped_no_parser,
+#         }, status=200)
+
+#     except Exception as e:
+#         logger.exception("Device data download/import failed: %s", e)
+#         return JsonResponse({'error': 'Download failed'}, status=500)
+#     finally:
+#         try:
+#             ftp.quit()
+#         except Exception:
+#             pass
 

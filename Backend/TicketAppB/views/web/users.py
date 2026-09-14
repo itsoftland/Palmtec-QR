@@ -706,8 +706,8 @@ def change_user_password(request, user_id):
     new_password = (request.data.get('new_password') or '').strip()
     if not new_password:
         return Response({'error': 'new_password is required.'}, status=status.HTTP_400_BAD_REQUEST)
-    if len(new_password) < 8:
-        return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+    if len(new_password) < 6:
+        return Response({'error': 'Password must be at least 6 characters.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if target.check_password(new_password):
         return Response({'error': 'New password must be different from the old password.'}, status=status.HTTP_400_BAD_REQUEST)
