@@ -311,28 +311,16 @@ def apk_dashboard(request):
             # Latest schedule
             latest_data = bus_schedules.first()
 
-            # Only get schedules with EXACT same start_date
-            same_start_date = bus_schedules.filter(
-                start_date=date_str
-            )
-
-            # Add only if start_date is exactly the requested date
-            if str(latest_data.start_date) == str(date_str):
-                cash_amt = sum(
-                    data.total_collection or 0
-                    for data in same_start_date
-                )
-
-                upi_amt = sum(
-                    data.upi_total_collection or 0
-                    for data in same_start_date
-                )
-            else:
-                # Use only latest record
-                cash_amt = latest_data.total_collection or 0
-                upi_amt = latest_data.upi_total_collection or 0
-
-            revenue = cash_amt + upi_amt
+            # Money figures: ScheduleData.total_collection/upi_total_collection are
+            # cumulative for the whole open schedule (can span multiple days), not
+            # scoped to date_str, so they can't be used here. Reuse the date-scoped
+            # per-bus totals already computed above from TripData/TransactionData —
+            # same source as the header totals, so bus_list sums match them.
+            closed = closed_bus_rows.get(bus_no, {})
+            open_rev = open_bus_rows.get(bus_no, {})
+            revenue = (closed.get('revenue') or 0) + (open_rev.get('revenue') or 0)
+            upi_amt = (closed.get('upi_amt') or 0) + (open_rev.get('upi_amt') or 0)
+            cash_amt = revenue - upi_amt
 
             status = (
                 "Running"
