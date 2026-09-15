@@ -411,13 +411,15 @@ def process_transaction_data(self, log_id):
 
             try:
                 with transaction.atomic():
+                    device_unique_code = _p(1)
+                    ticket_number      = _p(5)
                     TransactionData.objects.create(
-                        unique_code          = _p(1),
+                        unique_code          = f"{device_unique_code}{ticket_number}" if device_unique_code else None,
                         palmtec_id           = _p(2),
                         route_id             = route,
                         trip_id              = trip_obj,
                         schedule_id          = schedule_obj,
-                        ticket_number        = _p(5),
+                        ticket_number        = ticket_number,
                         ticket_date          = ticket_date,
                         ticket_time          = ticket_time,
                         from_stage           = from_raw,
