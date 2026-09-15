@@ -263,7 +263,7 @@ def getTicketDataFromDevice(request):
     if parts[0] != 'Ticket':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_ticket.debug("RECV fn=%s palmtec=%s", parts[1], parts[2])
+    log_ticket.info("RECV fn=%s palmtec=%s data=%s", parts[1], parts[2], raw)
 
     if not _validate_checksum('getTicket', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
