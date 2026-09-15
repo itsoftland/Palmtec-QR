@@ -53,10 +53,14 @@ export default function DealerDashboard() {
   const [error, setError]     = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => { fetchDashboard(); }, []);
+  useEffect(() => {
+    fetchDashboard();
+    const interval = setInterval(() => fetchDashboard(true), 10000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const fetchDashboard = async () => {
-    setLoading(true);
+  const fetchDashboard = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const res = await api.get(`${BASE_URL}/dealer-dashboard`);
@@ -65,7 +69,7 @@ export default function DealerDashboard() {
       console.error('DealerDashboard fetch error:', err);
       setError('Failed to load dashboard data.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 

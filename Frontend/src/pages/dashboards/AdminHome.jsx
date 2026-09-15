@@ -30,11 +30,13 @@ export default function AdminHome() {
 
   useEffect(() => {
     fetchAdminData();
+    const interval = setInterval(() => fetchAdminData(true), 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchAdminData = async () => {
+  const fetchAdminData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await api.get(`${BASE_URL}/get_admin_data`);
       if (response.data.message === "Success") {
         setSummary(response.data.data);
@@ -42,7 +44,7 @@ export default function AdminHome() {
     } catch (err) {
       console.error("Admin dashboard error:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 

@@ -38,10 +38,14 @@ export default function CompanyDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => { fetchDashboardData(); }, [selectedDate]);
+  useEffect(() => {
+    fetchDashboardData();
+    const interval = setInterval(() => fetchDashboardData(true), 10000);
+    return () => clearInterval(interval);
+  }, [selectedDate]);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+  const fetchDashboardData = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await api.get(`${BASE_URL}/get_company_dashboard_metrics?date=${selectedDate}`);
@@ -52,7 +56,7 @@ export default function CompanyDashboard() {
       else if (!err.response) setError("Cannot connect to server.");
       else setError("Failed to load dashboard data.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 

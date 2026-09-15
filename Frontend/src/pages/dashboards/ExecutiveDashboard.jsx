@@ -28,10 +28,14 @@ export default function ExecutiveDashboard() {
     catch { return {}; }
   })();
 
-  useEffect(() => { fetchDashboard(); }, []);
+  useEffect(() => {
+    fetchDashboard();
+    const interval = setInterval(() => fetchDashboard(true), 10000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const fetchDashboard = async () => {
-    setLoading(true);
+  const fetchDashboard = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const res = await api.get(`${BASE_URL}/executive-dashboard`);
@@ -40,7 +44,7 @@ export default function ExecutiveDashboard() {
       console.error('ExecutiveDashboard fetch error:', err);
       setError('Failed to load dashboard data.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
