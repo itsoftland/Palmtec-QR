@@ -703,6 +703,7 @@ def apk_passengers(request):
         'schedule_no': schedule_no,
         'trip_no': trip_no,
         'date': date_str,
+        'trip_type': trip.up_down_trip or qs.exclude(up_down_trip__isnull=True).values_list('up_down_trip', flat=True).first(),
         'header': {
             'status': status,
             'current_stage': current_stage,
