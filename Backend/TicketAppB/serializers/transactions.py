@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from ..models import TransactionData, TripData, ScheduleData
+from ..models import TransactionData, TripData, ScheduleData, ExpenseData
 
 
 class TicketDataSerializer(serializers.ModelSerializer):
@@ -308,3 +308,24 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
 
     def get_company_name(self, obj):
         return obj.company_code.company_name if obj.company_code else None
+
+
+class ExpenseDataSerializer(serializers.ModelSerializer):
+    expense_code = serializers.SerializerMethodField()
+    driver_name  = serializers.CharField(source='driver', read_only=True)
+    bus_number   = serializers.CharField(source='bus_no', read_only=True)
+    date         = serializers.DateField(source='expense_date', read_only=True)
+    time         = serializers.TimeField(source='expense_time', read_only=True)
+
+    class Meta:
+        model  = ExpenseData
+        fields = [
+            'id', 'unique_code', 'expense_code', 'expense_name', 'expense_amount',
+            'diesel_amount', 'date', 'time', 'palmtec_id',
+            'schedule_no', 'trip_no', 'driver_name', 'bus_number',
+            'source', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_expense_code(self, obj):
+        return obj.expense_master_id.expense_code if obj.expense_master_id else None

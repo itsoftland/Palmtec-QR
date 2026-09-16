@@ -20,7 +20,7 @@ export default function ExpenseDataPage() {
 
   const { filteredItems, searchTerm, setSearchTerm } = useFilteredList(
     records,
-    ['expense_code', 'expense_name', 'driver_name', 'bus_number', 'palmtec_id', 'receipt_no']
+    ['expense_code', 'expense_name', 'driver_name', 'bus_number', 'palmtec_id', 'unique_code']
   );
 
   const {

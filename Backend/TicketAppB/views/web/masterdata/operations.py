@@ -2,8 +2,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from ....models import ExpenseMaster, InspectorDetails, Expense
-from ....serializers.masterdata import ExpenseMasterSerializer, InspectorDetailsSerializer, ExpenseSerializer
+from ....models import ExpenseMaster, InspectorDetails, ExpenseData
+from ....serializers.masterdata import ExpenseMasterSerializer, InspectorDetailsSerializer
+from ....serializers.transactions import ExpenseDataSerializer
 from ...utils import _get_authenticated_company_admin, _get_object_or_404
 
 
@@ -92,9 +93,9 @@ def get_expenses(request):
         )
 
     qs = (
-        Expense.objects
-        .filter(company=company, date__gte=from_date, date__lte=to_date)
-        .select_related('driver')
-        .order_by('-date', '-time')
+        ExpenseData.objects
+        .filter(company_code=company, expense_date__gte=from_date, expense_date__lte=to_date)
+        .select_related('expense_master_id')
+        .order_by('-expense_date', '-expense_time')
     )
-    return Response({'message': 'Success', 'data': ExpenseSerializer(qs, many=True).data})
+    return Response({'message': 'Success', 'data': ExpenseDataSerializer(qs, many=True).data})
