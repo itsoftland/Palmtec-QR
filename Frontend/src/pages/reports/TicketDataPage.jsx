@@ -158,6 +158,11 @@ function TicketRow({ ticket: t, onView, isNew }) {
         {t.route_code && <div className="text-[11px] text-slate-500 mt-0.5">{t.route_code}</div>}
       </td>
 
+      {/* Pass Number */}
+      <td className="px-4 py-3.5">
+        <span className="text-sm text-slate-700 font-mono">{t.pass_number || '—'}</span>
+      </td>
+
       {/* Date + Time */}
       <td className="px-4 py-3.5">
         <div className="text-sm font-medium text-slate-700 tabular-nums">{t.ticket_time ? t.ticket_time.slice(0, 5) : '—'}</div>
@@ -842,6 +847,7 @@ export default function TicketDataPage() {
                   <SortHead label="Ticket"       sortKey="ticket_number"         currentKey={sortConfig.key} direction={sortConfig.direction} onSort={handleSort} />
                   <SortHead label="Device · Trip" sortKey="palmtec_id"           currentKey={sortConfig.key} direction={sortConfig.direction} onSort={handleSort} />
                   <th className="px-4 py-3 font-semibold">Route Segment</th>
+                  <SortHead label="Pass No"      sortKey="pass_number"           currentKey={sortConfig.key} direction={sortConfig.direction} onSort={handleSort} />
                   <SortHead label="Time"         sortKey="ticket_time"           currentKey={sortConfig.key} direction={sortConfig.direction} onSort={handleSort} />
                   <SortHead label="Pax"          sortKey="total_tickets"         currentKey={sortConfig.key} direction={sortConfig.direction} onSort={handleSort} align="center" />
                   <SortHead label="Amount"       sortKey="ticket_amount"         currentKey={sortConfig.key} direction={sortConfig.direction} onSort={handleSort} align="right" />
@@ -852,7 +858,7 @@ export default function TicketDataPage() {
                 {isRefreshing && !currentData.length
                   ? Array.from({ length: 6 }).map((_, i) => (
                       <tr key={i}>
-                        {[40,90,90,130,60,50,70,30].map((w, j) => (
+                        {[40,90,90,130,70,60,50,70,30].map((w, j) => (
                           <td key={j} className="px-4 py-3.5">
                             <div className="h-3 bg-slate-200 rounded-full animate-pulse" style={{ width: w }} />
                           </td>
@@ -870,7 +876,7 @@ export default function TicketDataPage() {
                       ))
                     : (
                       <tr>
-                        <td colSpan={8} className="px-4 py-12 text-center">
+                        <td colSpan={9} className="px-4 py-12 text-center">
                           <Ticket size={28} className="mx-auto text-slate-300 mb-2" />
                           <p className="text-slate-400 text-sm">No tickets found for selected filters</p>
                         </td>
@@ -882,7 +888,7 @@ export default function TicketDataPage() {
                 <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                   <tr className="text-xs">
                     <td className="px-4 py-3"></td>
-                    <td colSpan={4} className="px-4 py-3 font-semibold text-slate-600 uppercase tracking-wider">Page total</td>
+                    <td colSpan={5} className="px-4 py-3 font-semibold text-slate-600 uppercase tracking-wider">Page total</td>
                     <td className="px-4 py-3 text-center font-bold text-slate-800">
                       {currentData.reduce((s, t) => s + (t.total_tickets || 0), 0)}
                     </td>

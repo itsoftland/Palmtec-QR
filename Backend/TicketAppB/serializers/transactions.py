@@ -60,6 +60,7 @@ class TicketDataSerializer(serializers.ModelSerializer):
             'lugg_amount',
             'adjust_amount',
             'pass_id',
+            'pass_number',
             'warrant_amount',
             'refund_status',
             'refund_amount',

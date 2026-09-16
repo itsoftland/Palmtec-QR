@@ -89,6 +89,7 @@ class TransactionData(models.Model):
     ticket_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     lugg_amount   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     adjust_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    pass_number = models.CharField(max_length=10, null=True, blank=True)
     refund_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     # ── Pass / Warrant / Refund ───────────────────────────────────────────────

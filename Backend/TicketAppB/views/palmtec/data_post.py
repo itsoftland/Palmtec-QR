@@ -257,7 +257,7 @@ def getTicketDataFromDevice(request):
     parts = raw.split("|")
 
     # Need at least parts[47] (upi_manual_check); parts[46]=license_code, parts[44]=ticket_status
-    if len(parts) < 48:
+    if len(parts) < 49:
         return HttpResponse("MISSING_DATA", status=400, content_type="text/plain")
 
     if parts[0] != 'Ticket':

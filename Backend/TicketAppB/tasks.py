@@ -259,7 +259,7 @@ def _validate_device(log, palmtec_id_raw, company):
 #   [36]=full_total  [37]=half_total  [38]=phy_total  [39]=ladies_total
 #   [40]=senior_total  [41]=lugg_total  [42]=st_total
 #   [43]=transaction_id  [44]=ticket_status  [45]=bqr_merchant_id
-#   [46]=license_code(company)  [47]=upi_manual_check (1=manual, 0=auto)  [48]=checksum
+#   [46]=license_code(company)  [47]=upi_manual_check (1=manual, 0=auto) [48]=pass_number  [49]=checksum
 # ─────────────────────────────────────────────────────────────────────────────
 @shared_task(bind=True, max_retries=3)
 def process_transaction_data(self, log_id):
@@ -439,6 +439,7 @@ def process_transaction_data(self, log_id):
                         ticket_type          = int(_p(19)) if _p(19) else None,
                         adjust_amount        = Decimal(_p(20, '0')),
                         pass_id              = _p(21),
+                        pass_number          = _p(48),
                         warrant_amount       = Decimal(_p(22, '0')),
                         refund_status        = int(_p(23)) if _p(23) else None,
                         refund_amount        = Decimal(_p(24, '0')),
