@@ -467,6 +467,7 @@ export default function DealerListing() {
             remaining_total_user_count: pool.total_users?.remaining,
             remaining_premium_user_count: pool.premium?.remaining,
             remaining_intermediate_user_count: pool.inter?.remaining,
+            remaining_basic_user_count: pool.basic?.remaining,
           } : prev);
         })
         .catch(err => console.error('Dealer pool fetch error:', err));
@@ -735,8 +736,7 @@ export default function DealerListing() {
                           <button
                             type="button"
                             onClick={() => handleSyncDryRunRow(dealer)}
-                            disabled={syncingLicense[dealer.id] || dealer.authentication_status === 'Approve'}
-                            title={dealer.authentication_status === 'Approve' ? 'License is already approved' : undefined}
+                            disabled={syncingLicense[dealer.id]}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors cursor-pointer"
                           >
                             <RefreshCw size={11} />
@@ -872,6 +872,7 @@ export default function DealerListing() {
                       { label: 'Total Users', total: editingItem.total_user_count, remaining: editingItem.remaining_total_user_count },
                       { label: 'Premium', total: editingItem.premium_user_count, remaining: editingItem.remaining_premium_user_count },
                       { label: 'Intermediate', total: editingItem.intermediate_user_count, remaining: editingItem.remaining_intermediate_user_count },
+                      { label: 'Basic', total: editingItem.basic_user_count, remaining: editingItem.remaining_basic_user_count },
                     ].map(({ label, total, remaining }) => (
                       <div key={label} className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
                         <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{label}</p>
