@@ -87,11 +87,6 @@ export default function RouteListing() {
   const [wizardData, setWizardData] = useState(emptyWizard);
   const [stageInput, setStageInput] = useState({ stage_name: '', distance: '', stage_code: '' });
 
-  // ── Section 3c: Wizard "similar stage" confirm modal ─────────────────────
-  // null | { stage_name, stage_code, distance, similar, confirmedSimilar }
-  const [stageModal, setStageModal] = useState(null);
-  const [stageModalError, setStageModalError] = useState('');
-
   // ── beforeunload guard during wizard ────────────────────────────────────
   useEffect(() => {
     if (wizardStep === 0) return;
@@ -145,67 +140,6 @@ export default function RouteListing() {
     } catch (err) {
       console.error('Error fetching stages:', err);
     }
-  };
-
-  // Existing company stages whose name is a substring match (either direction,
-  // case-insensitive) of `name` but not an exact match — exact matches reuse
-  // silently elsewhere and are never flagged as "similar".
-  const findSimilarStages = (name) => {
-    const q = (name || '').trim().toLowerCase();
-    if (!q) return [];
-    return stages.filter(s => {
-      const sname = s.stage_name.toLowerCase();
-      if (sname === q) return false;
-      // Skip trivial substring hits against very short existing names (e.g. "A").
-      if (sname.length < 3 && sname.length < q.length) return false;
-      return sname.includes(q) || q.includes(sname);
-    });
-  };
-
-  // Only used by the route-creation wizard, to confirm creating a genuinely
-  // new stage when a similarly-named one already exists.
-  const openCreateStageModal = (name, distance) => {
-    const pending = wizardData.stages.map(s => s.stage_code);
-    setStageModalError('');
-    setStageModal({
-      stage_name: name, stage_code: suggestStageCode(pending),
-      distance, similar: findSimilarStages(name), confirmedSimilar: false,
-    });
-  };
-
-  const closeStageModal = () => {
-    setStageModal(null);
-    setStageModalError('');
-  };
-
-  const saveStageModal = () => {
-    if (!stageModal) return;
-    const stage_name = stageModal.stage_name.trim();
-    const stage_code = stageModal.stage_code.trim();
-    if (!stage_name || !stage_code) {
-      setStageModalError('Stage name and code are required.');
-      return;
-    }
-    if (stageModal.similar.length > 0 && !stageModal.confirmedSimilar) {
-      setStageModalError('Similar stage(s) exist above — confirm to create a new one anyway.');
-      return;
-    }
-    const pending = wizardData.stages.map(s => s.stage_code);
-    if (isStageCodeTaken(stage_code, pending)) {
-      setStageModalError('Code already in use.');
-      return;
-    }
-
-    setWizardData(prev => ({
-      ...prev,
-      stages: [...prev.stages, {
-        stage_name, stage_code, distance: stageModal.distance || '0',
-        confirmed_similar: stageModal.confirmedSimilar,
-      }],
-    }));
-    setStageInput({ stage_name: '', distance: '', stage_code: suggestStageCode([...pending, stage_code]) });
-    setTimeout(() => stageNameRef.current?.focus(), 50);
-    closeStageModal();
   };
 
   const fetchDepots = async () => {
@@ -552,6 +486,7 @@ export default function RouteListing() {
   };
 
   const stageDistanceError = (distanceStr) => {
+    if (!distanceStr) return null;
     const dist = parseFloat(distanceStr || '0');
     if (wizardData.stages.length === 0) {
       if (dist !== 0) return 'First stage distance must be 0 km.';
@@ -584,13 +519,6 @@ export default function RouteListing() {
       }));
       setStageInput({ stage_name: '', distance: '', stage_code: suggestStageCode(pendingCodes) });
       setTimeout(() => stageNameRef.current?.focus(), 50);
-      return;
-    }
-
-    // No exact match, but something similarly-named exists — confirm before creating new.
-    const similar = findSimilarStages(name);
-    if (similar.length > 0) {
-      openCreateStageModal(name, stageInput.distance || '0');
       return;
     }
 
@@ -2215,86 +2143,6 @@ export default function RouteListing() {
               )}
             </div>
 
-          </div>
-        </div>
-      )}
-
-      {/* ── Wizard "similar stage" confirm modal ── */}
-      {stageModal && (
-        <div className="fixed inset-0 bg-slate-900/70 z-[60] flex items-center justify-center px-4" onClick={closeStageModal}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-slate-800">Create New Stage</h3>
-              <button type="button" onClick={closeStageModal} className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Stage Name</label>
-                <input
-                  type="text"
-                  value={stageModal.stage_name}
-                  onChange={e => {
-                    const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
-                    setStageModal(m => ({ ...m, stage_name: val, similar: findSimilarStages(val), confirmedSimilar: false }));
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Stage Code</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={stageModal.stage_code}
-                  onChange={e => setStageModal(m => ({ ...m, stage_code: e.target.value.replace(/[^0-9]/g, '').slice(0, 50) }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                />
-              </div>
-
-              {stageModal.similar.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                  <p className="text-xs text-amber-800 font-medium">Similar stage{stageModal.similar.length > 1 ? 's' : ''} already exist:</p>
-                  <ul className="space-y-1">
-                    {stageModal.similar.slice(0, 5).map(s => (
-                      <li key={s.id} className="text-xs text-amber-700 flex items-center justify-between">
-                        <span>{s.stage_name}</span>
-                        <span className="font-mono text-amber-500">{s.stage_code}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <label className="flex items-center gap-2 pt-1 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={stageModal.confirmedSimilar}
-                      onChange={e => setStageModal(m => ({ ...m, confirmedSimilar: e.target.checked }))}
-                      className="cursor-pointer"
-                    />
-                    <span className="text-xs text-amber-800">Create a new stage anyway</span>
-                  </label>
-                </div>
-              )}
-
-              {stageModalError && <p className="text-xs text-red-600">{stageModalError}</p>}
-            </div>
-            <div className="flex items-center gap-2 mt-5">
-              <button type="button" onClick={closeStageModal}
-                className="flex-1 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveStageModal}
-                disabled={
-                  !stageModal.stage_name.trim() || !stageModal.stage_code.trim() ||
-                  (stageModal.similar.length > 0 && !stageModal.confirmedSimilar)
-                }
-                className="flex-1 px-3 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50"
-              >
-                Add Stage
-              </button>
-            </div>
           </div>
         </div>
       )}

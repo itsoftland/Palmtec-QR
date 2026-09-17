@@ -238,7 +238,7 @@ export default function ExpenseMasterPage() {
                 onChange={handleInputChange}
                 placeholder="e.g. FUEL"
                 minLength={3}
-                maxLength={20}
+                maxLength={8}
                 required
               />
             </div>
@@ -259,7 +259,7 @@ export default function ExpenseMasterPage() {
                 onChange={handleInputChange}
                 placeholder="e.g. Fuel Expense"
                 minLength={3}
-                maxLength={20}
+                maxLength={8}
                 required
               />
             </div>
