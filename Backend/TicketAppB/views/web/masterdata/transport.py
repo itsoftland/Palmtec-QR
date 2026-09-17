@@ -248,54 +248,6 @@ def update_route(request, pk):
     return Response({'message': 'Validation failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
-def _find_similar_stages(stage_name, company):
-    """
-    Existing company stages whose name is a case-insensitive substring match
-    of stage_name (either direction) but not an exact match — exact matches
-    are silently reused elsewhere and never flagged as a "conflict".
-    """
-    q = stage_name.strip().lower()
-    if not q:
-        return []
-    candidates = Stage.objects.filter(company=company, is_deleted=False).exclude(stage_name__iexact=stage_name)
-    similar = []
-    for s in candidates:
-        sname = s.stage_name.lower()
-        # Skip trivial substring hits against very short existing names (e.g. "A")
-        # — a 1-2 char match against anything isn't a meaningful "similar name".
-        if len(sname) < 3 and len(sname) < len(q):
-            continue
-        if q in sname or sname in q:
-            similar.append(s)
-    return similar
-
-
-def _check_stage_similarity_conflicts(stages_data, company):
-    """
-    Dry-run over a route_stages payload: for every entry that would create a
-    brand-new Stage (no `stage` id, no exact name match), flag it if a
-    similarly-named stage already exists and the caller hasn't explicitly
-    confirmed (`confirmed_similar: true`) that a new one is wanted anyway.
-    """
-    conflicts = []
-    for idx, stage_data in enumerate(stages_data):
-        if stage_data.get('stage'):
-            continue
-        stage_name = str(stage_data.get('stage_name', '')).strip()
-        if not stage_name or stage_data.get('confirmed_similar'):
-            continue
-        if Stage.objects.filter(company=company, stage_name__iexact=stage_name, is_deleted=False).exists():
-            continue
-        similar = _find_similar_stages(stage_name, company)
-        if similar:
-            conflicts.append({
-                'index': idx,
-                'stage_name': stage_name,
-                'similar_to': [{'id': s.id, 'stage_name': s.stage_name, 'stage_code': s.stage_code} for s in similar],
-            })
-    return conflicts
-
-
 def _save_route_stages(route, stages_data, company, user):
     """
     Rename + distance only — a route's stops are fixed once created (via the
@@ -669,13 +621,6 @@ def create_route_wizard(request):
     for idx, stage_data in enumerate(stages_data):
         if not stage_data.get('stage') and not str(stage_data.get('stage_name', '')).strip():
             return Response({'message': f'Stage entry #{idx + 1} is missing a name.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    conflicts = _check_stage_similarity_conflicts(stages_data, company)
-    if conflicts:
-        return Response(
-            {'message': 'Some stage names look similar to existing stages. Confirm to proceed.', 'similar_stage_conflicts': conflicts},
-            status=status.HTTP_409_CONFLICT,
-        )
 
     try:
         fare_type = int(fare_type_raw)
