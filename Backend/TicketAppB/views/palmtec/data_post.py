@@ -59,6 +59,7 @@ def getScheduleOpenDataFromDevice(request):
         return HttpResponse("METHOD_NOT_ALLOWED", status=405, content_type="text/plain")
 
     raw = request.GET.get("fn")
+    # log_schedule_open.info("RAW data - getScheduleOpenDataFromDevice: %s", raw)
     if not raw:
         return HttpResponse("NO_DATA", status=400, content_type="text/plain")
 
@@ -71,7 +72,10 @@ def getScheduleOpenDataFromDevice(request):
     if parts[0] != 'ShdOpn':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_schedule_open.debug("RECV fn=%s palmtec=%s", parts[1], parts[3])
+    ''' hide it due to not writing'''
+    # log_schedule_open.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[3], raw)
+    ''' using this for temp '''
+    log_ticket.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[3], raw)
 
     if not _validate_checksum('getScheduleOpen', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -167,7 +171,10 @@ def getTripOpenDataFromDevice(request):
     if parts[0] != 'TrpOp':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_trip_open.debug("RECV fn=%s palmtec=%s", parts[1], parts[2])
+    ''' hide it due to not writing'''
+    # log_trip_open.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
+    ''' using this for temp '''
+    log_ticket.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
 
     if not _validate_checksum('getTripOpen', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -361,7 +368,10 @@ def getScheduleCloseDataFromDevice(request):
     if parts[0] != 'ShdCls':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_schedule_close.debug("RECV fn=%s palmtec=%s", parts[1], parts[3])
+    ''' hide it due to not writing'''
+    # log_schedule_close.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[3], raw)
+    ''' using this for temp '''
+    log_ticket.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[3], raw)
 
     if not _validate_checksum('getSdCl', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -457,7 +467,10 @@ def getTripCloseDataFromDevice(request):
     if parts[0] != 'TrpCl':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_trip_close.debug("RECV fn=%s palmtec=%s", parts[1], parts[2])
+    ''' hide it due to not writing'''
+    # log_trip_close.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
+    ''' using this for temp '''
+    log_ticket.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
 
     if not _validate_checksum('getTripClose', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -552,7 +565,10 @@ def getTripCloseSummaryFromDevice(request):
     if parts[0] != 'TrpClSum':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_trip_close_sum.debug("RECV fn=%s palmtec=%s", parts[1], parts[2])
+    ''' hide it due to not writing'''
+    # log_trip_close_sum.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
+    ''' using this for temp '''
+    log_ticket.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
 
     if not _validate_checksum('getTripCloseSummary', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -595,7 +611,10 @@ def getScheduleCloseSummaryFromDevice(request):
     if parts[0] != 'ShdClsSum':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_schedule_close_sum.debug("RECV fn=%s palmtec=%s", parts[1], parts[3])
+    ''' hide it due to not writing'''
+    # log_schedule_close_sum.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[3], raw)
+    ''' using this for temp '''
+    log_ticket.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[3], raw)
 
     if not _validate_checksum('getSdClSm', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -642,7 +661,7 @@ def getOdometerDataFromDevice(request):
     if parts[0] != 'OdoMtr':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_odometer.debug("RECV fn=%s palmtec=%s", parts[1], parts[2])
+    log_odometer.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
 
     if not _validate_checksum('getOdometerDetails', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
@@ -739,7 +758,7 @@ def getExpenseDataFromDevice(request):
     if parts[0] != 'ExpDtl':
         return HttpResponse("INVALID", status=400, content_type="text/plain")
 
-    log_expense.debug("RECV fn=%s palmtec=%s", parts[1], parts[2])
+    log_expense.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
 
     if not _validate_checksum('getExpenseDetails', raw):
         return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
