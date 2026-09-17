@@ -1563,7 +1563,7 @@ def poll_company_license(self, company_id: int) -> None:
     import logging
     log = logging.getLogger(__name__)
 
-    from .views.web.company import poll_license_authentication, _parse_license_date
+    from .views.web.company import poll_license_authentication, _parse_license_date, extract_basic_user_count
 
     log.info(f'[poll_company_license] Starting for company_id={company_id}')
 
@@ -1606,6 +1606,9 @@ def poll_company_license(self, company_id: int) -> None:
             total_user_count        = _safe_int(auth_data.get('TotalUserCount'))
             premium_user_count      = _safe_int(auth_data.get('PremiumUserCount'))
             intermediate_user_count = _safe_int(auth_data.get('IntermediateUserCount'))
+            basic_user_count        = extract_basic_user_count(
+                auth_data, total_user_count, premium_user_count, intermediate_user_count
+            )
 
             if number_of_licences > 0 and (palmtec_count + total_user_count) > number_of_licences:
                 log.error(
@@ -1632,6 +1635,7 @@ def poll_company_license(self, company_id: int) -> None:
             company.total_user_count         = total_user_count
             company.premium_user_count       = premium_user_count
             company.intermediate_user_count  = intermediate_user_count
+            company.basic_user_count         = basic_user_count
             company.error_message            = None
 
         company.save()
