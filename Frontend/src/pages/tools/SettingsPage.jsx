@@ -301,10 +301,10 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
 
       <SectionCard title="Passwords" icon={Smartphone}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ConstrainedField label="User Password" name="user_pwd" value={formData.user_pwd} onChange={onChange} maxLen={11} placeholder="e.g. 111111" loading={loading} error={err('user_pwd')} />
-          <ConstrainedField label="Master Password" name="master_pwd" value={formData.master_pwd} onChange={onChange} maxLen={11} placeholder="e.g. 130827" loading={loading} error={err('master_pwd')} />
-          {isDevice && <ConstrainedField label="Supervisor Password" name="supervisor_pwd" value={formData.supervisor_pwd} onChange={onChange} maxLen={11} placeholder="e.g. 123456" loading={loading} error={err('supervisor_pwd')} />}
-          {isDevice && <ConstrainedField label="Remove Password" name="remove_pwd" value={formData.remove_pwd} onChange={onChange} maxLen={11} placeholder="e.g. 999999" loading={loading} error={err('remove_pwd')} />}
+          <ConstrainedField label="User Password" name="user_pwd" value={formData.user_pwd} onChange={onChange} maxLen={6} placeholder="e.g. 111111" loading={loading} error={err('user_pwd')} />
+          <ConstrainedField label="Master Password" name="master_pwd" value={formData.master_pwd} onChange={onChange} maxLen={6} placeholder="e.g. 130827" loading={loading} error={err('master_pwd')} />
+          {isDevice && <ConstrainedField label="Supervisor Password" name="supervisor_pwd" value={formData.supervisor_pwd} onChange={onChange} maxLen={6} placeholder="e.g. 123456" loading={loading} error={err('supervisor_pwd')} />}
+          {isDevice && <ConstrainedField label="Remove Password" name="remove_pwd" value={formData.remove_pwd} onChange={onChange} maxLen={6} placeholder="e.g. 999999" loading={loading} error={err('remove_pwd')} />}
         </div>
       </SectionCard>
 
