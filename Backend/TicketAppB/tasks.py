@@ -72,15 +72,24 @@ def _decode_etm_time(s):
         return None
 
 
-def _resolve_schedule(palmtec_id, company_id, schedule_no, schedule_start_date):
+def _resolve_schedule(palmtec_id, company_id, schedule_no, schedule_start_date,
+                      schedule_start_time=None):
+    """
+    Schedule identity = palmtec + company + schedule_no + start_date + start_time.
+    After a device reset the same schedule_no is reused on the same day, so start_time
+    is what separates the old schedule from the new one.
+    """
     if not schedule_no or not schedule_start_date:
         return None
-    return ScheduleData.objects.filter(
+    qs = ScheduleData.objects.filter(
         palmtec_id=palmtec_id,
         company_code_id=company_id,
         schedule_no=schedule_no,
         start_date=schedule_start_date,
-    ).first()
+    )
+    if schedule_start_time is not None:
+        qs = qs.filter(start_time=schedule_start_time)
+    return qs.first()
 
 
 def _resolve_trip(palmtec_id, company_id, trip_no, trip_start_date, schedule_no=None):
@@ -124,7 +133,7 @@ def _get_or_create_ghost_schedule(palmtec_id, company, schedule_no, schedule_sta
     If it doesn't exist yet, create a ghost row (auto_opened=True) so downstream
     FKs have something to point at.  On concurrent-worker IntegrityError, re-fetch.
     """
-    existing = _resolve_schedule(palmtec_id, company.id, schedule_no, schedule_start_date)
+    existing = _resolve_schedule(palmtec_id, company.id, schedule_no, schedule_start_date, schedule_start_time)
     if existing:
         return existing
     start_datetime = (
@@ -144,7 +153,7 @@ def _get_or_create_ghost_schedule(palmtec_id, company, schedule_no, schedule_sta
                 company_code   = company,
             )
     except IntegrityError:
-        return _resolve_schedule(palmtec_id, company.id, schedule_no, schedule_start_date)
+        return _resolve_schedule(palmtec_id, company.id, schedule_no, schedule_start_date, schedule_start_time)
 
 
 def _get_or_create_ghost_trip(palmtec_id, company, route, schedule_obj,
@@ -369,7 +378,7 @@ def process_transaction_data(self, log_id):
             # ── Resolve or ghost-create schedule ─────────────────────────────
             # Ticket carries schedule_no + schedule_start_date/time — enough to
             # create a ghost ScheduleData if ShdOpn hasn't arrived yet.
-            schedule_obj = _resolve_schedule(str(_p(2)), company.id, schedule_no, schedule_start_date)
+            schedule_obj = _resolve_schedule(str(_p(2)), company.id, schedule_no, schedule_start_date, schedule_start_time)
             if not schedule_obj and schedule_no and schedule_start_date:
                 schedule_obj = _get_or_create_ghost_schedule(
                     palmtec_id          = str(_p(2)),
@@ -557,7 +566,7 @@ def process_trip_open_data(self, log_id):
             # ── Resolve or ghost-create schedule ─────────────────────────────
             # TrpOp carries schedule_no + schedule_start_date/time — enough to
             # create a ghost ScheduleData if ShdOpn hasn't arrived yet.
-            schedule_obj = _resolve_schedule(_p(2), company.id, schedule_no, schedule_start_date)
+            schedule_obj = _resolve_schedule(_p(2), company.id, schedule_no, schedule_start_date, schedule_start_time)
             if not schedule_obj and schedule_no and schedule_start_date:
                 schedule_obj = _get_or_create_ghost_schedule(
                     palmtec_id          = _p(2),
@@ -748,7 +757,7 @@ def process_trip_close_data(self, log_id):
             )
 
             # ── Resolve FKs ───────────────────────────────────────────────────
-            schedule_obj  = _resolve_schedule(_p(2), company.id, schedule_no, schedule_start_date)
+            schedule_obj  = _resolve_schedule(_p(2), company.id, schedule_no, schedule_start_date, schedule_start_time)
             driver_obj    = _resolve_employee(_p(13), company.id)
             conductor_obj = _resolve_employee(_p(14), company.id)
 
@@ -893,6 +902,7 @@ def process_schedule_open_data(self, log_id):
                 company_code=company,
                 schedule_no=schedule_no,
                 start_date=start_date,
+                start_time=start_time,
             ).first()
 
             if existing:
@@ -1099,6 +1109,7 @@ def process_schedule_close_data(self, log_id):
                 company_code=company,
                 schedule_no=schedule_no,
                 start_date=schedule_start_date,
+                start_time=schedule_start_time,
             ).first()
 
             if existing:
@@ -1218,7 +1229,7 @@ def process_trip_close_summary_data(self, log_id):
                 log.save()
                 return
 
-            schedule_obj  = _resolve_schedule(_p(2), company.id, schedule_no, schedule_start_date)
+            schedule_obj  = _resolve_schedule(_p(2), company.id, schedule_no, schedule_start_date, schedule_start_time)
             driver_obj    = _resolve_employee(_p(13), company.id)
             conductor_obj = _resolve_employee(_p(14), company.id)
 
@@ -1357,6 +1368,7 @@ def process_schedule_close_summary_data(self, log_id):
                 company_code=company,
                 schedule_no=schedule_no,
                 start_date=schedule_start_date,
+                start_time=schedule_start_time,
             ).first()
             if existing and existing.is_closed:
                 log.status = RawDataLog.statusChoices.DUPLICATE

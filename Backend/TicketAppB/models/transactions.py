@@ -287,7 +287,7 @@ class ScheduleData(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['palmtec_id', 'company_code', 'schedule_no', 'start_date'],
+                fields=['palmtec_id', 'company_code', 'schedule_no', 'start_date', 'start_time'],
                 name='uniq_schedule_data'
             )
         ]
