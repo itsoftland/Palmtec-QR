@@ -1,0 +1,22 @@
+2026-04-20 16:54:27,815 - INFO - ==================================================
+2026-04-20 16:54:27,815 - INFO - Application starting. APP_DIR = C:\Users\SILPC-012\Downloads\PalmtechDataTransfernew4\PalmtechDataTransfer
+2026-04-20 16:54:27,868 - INFO - Starting Palmtech worker in USB mode.
+2026-04-20 16:54:27,868 - INFO - Application directory : C:\Users\SILPC-012\Downloads\PalmtechDataTransfernew4\PalmtechDataTransfer
+2026-04-20 16:54:27,868 - INFO - Target folder         : C:\Users\SILPC-012\Downloads\PalmtechDataTransfernew4\PalmtechDataTransfer\files
+2026-04-20 16:54:27,869 - INFO - Files to transfer (11): ['BUS.DAT', 'CREW.DAT', 'EXPENSEDET.DAT', 'LANGUAGE.DAT', 'RouteLst.LST', 'RTE.dat', 'SCRATCHPAD1.DAT', 'STAGE.LST', 'STATUS.DAT', 'VEHICLE.DAT', 'VERSION.DAT']
+2026-04-20 16:54:27,871 - ERROR - Could not auto-detect palmtech device.
+2026-04-20 16:54:27,871 - ERROR - Failed to establish USB connection to Palmtech device. Exiting.
+2026-04-20 16:54:27,871 - INFO - Application finished.
+2026-08-07 12:57:49,321 - INFO - ==================================================
+2026-08-07 12:57:49,322 - INFO - Application starting. APP_DIR = C:\Users\SILPC-012\Downloads\PalmtechDataTransfernew4\PalmtechDataTransfer
+2026-08-07 12:57:49,763 - ERROR - UNHANDLED EXCEPTION: [WinError 3] The system cannot find the path specified: 'C:\\Users\\SILPC-012\\Downloads\\PalmtechDataTransfernew4\\PalmtechDataTransfer\\files'
+2026-08-07 12:57:49,765 - ERROR - Traceback (most recent call last):
+  File "C:\Users\SILPC-012\Downloads\PalmtechDataTransfernew4\PalmtechDataTransfer\main.py", line 312, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\SILPC-012\Downloads\PalmtechDataTransfernew4\PalmtechDataTransfer\main.py", line 126, in main
+    existing_files = {f.upper() for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))}
+                                         ~~~~~~~~~~^^^^^^^^
+FileNotFoundError: [WinError 3] The system cannot find the path specified: 'C:\\Users\\SILPC-012\\Downloads\\PalmtechDataTransfernew4\\PalmtechDataTransfer\\files'
+
+2026-08-07 12:57:49,765 - INFO - Application finished.

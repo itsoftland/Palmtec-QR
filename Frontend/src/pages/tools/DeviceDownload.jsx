@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import JSZip from 'jszip';
 import api from '../../assets/js/axiosConfig';
 import { Download, MonitorDown, X, Check, ChevronDown, AlertTriangle } from 'lucide-react';
 
@@ -19,9 +20,69 @@ function triggerDownload(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-async function fetchBinary(endpoint) {
-  const res = await api.get(endpoint, { responseType: 'blob' });
+async function fetchBinary(endpoint, timeout) {
+  const res = await api.get(endpoint, { responseType: 'blob', ...(timeout ? { timeout } : {}) });
   return res.data;
+}
+
+// Windows shell metadata files — the browser's File System Access API refuses
+// to create files with these names on any platform.
+const FS_BLOCKED_NAMES = new Set(['desktop.ini', 'thumbs.db']);
+
+// Chromium also silently refuses some other filenames (old Windows system/VB6
+// redistributable DLLs seen in this tool's legacy vbcode/ source tree, e.g.
+// asycfilt.dll, COMCAT.DLL) via an internal, version-dependent blocklist that
+// isn't practical to fully enumerate up front. None of these live under dist/
+// — they're unused legacy source files — so a write failure here is skipped
+// and reported, not treated as fatal for the whole tool.
+async function writeZipToDirectory(blob, dirHandle) {
+  const zip = await JSZip.loadAsync(blob);
+  const entries = Object.values(zip.files);
+  const skipped = [];
+  for (const entry of entries) {
+    if (entry.dir) continue;
+    const parts = entry.name.split('/').filter(Boolean);
+    if (FS_BLOCKED_NAMES.has(parts[parts.length - 1].toLowerCase())) continue;
+    try {
+      let target = dirHandle;
+      for (let i = 0; i < parts.length - 1; i++) {
+        target = await target.getDirectoryHandle(parts[i], { create: true });
+      }
+      const fileHandle = await target.getFileHandle(parts[parts.length - 1], { create: true });
+      const writable  = await fileHandle.createWritable();
+      await writable.write(await entry.async('arraybuffer'));
+      await writable.close();
+    } catch (err) {
+      skipped.push(`${entry.name} (${err.name}: ${err.message})`);
+    }
+  }
+  if (skipped.length > 0) {
+    console.warn(`Palmtech tool: ${skipped.length} file(s) the browser refused to write, skipped:`, skipped);
+  }
+  return skipped;
+}
+
+async function getNestedDirectory(rootHandle, pathParts) {
+  let target = rootHandle;
+  for (const part of pathParts) {
+    target = await target.getDirectoryHandle(part, { create: true });
+  }
+  return target;
+}
+
+async function getExistingNestedDirectory(rootHandle, pathParts) {
+  let target = rootHandle;
+  for (const part of pathParts) {
+    target = await target.getDirectoryHandle(part);
+  }
+  return target;
+}
+
+async function writeFileToDirectory(blob, dirHandle, filename) {
+  const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+  const writable   = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
 }
 
 // ── Route Selection Modal ──────────────────────────────────────────────────────
@@ -173,6 +234,74 @@ function SkipWarningModal({ skipped, onConfirm, onClose }) {
   );
 }
 
+// ── Transfer Modal ──────────────────────────────────────────────────────────
+// The browser launches the locally registered protocol handler. An HTTP
+// request cannot start an executable on the operator's PC.
+function TransferModal({ onClose }) {
+  const [launching, setLaunching] = useState(false);
+  const [result,    setResult]    = useState(null); // { ok: bool, message: string }
+
+  const handleTransfer = async () => {
+    setLaunching(true);
+    setResult(null);
+    try {
+      window.location.assign('palmtec://launch');
+      setResult({ ok: true, message: 'Palmtech Transfer Tool launch requested on this PC.' });
+    } catch (err) {
+      setResult({ ok: false, message: err.message || 'Failed to launch the local transfer tool.' });
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-800">Transfer to Device</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          <p className="text-sm text-slate-600 mb-3">
+            The transfer files are ready. Click Transfer to open Palmtech Data Transfer on this PC.
+          </p>
+          <p className="text-xs text-slate-500">
+            If the tool does not open, run
+            <span className="font-mono">PalmtechDataTransfer\protocol-handler\register-palmtec-protocol-windows.bat</span>
+            from the folder you selected for download.
+          </p>
+
+          {result && (
+            <p className={`text-xs mt-2 ${result.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+              {result.message}
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+          >
+            Close
+          </button>
+          <button
+            onClick={handleTransfer}
+            disabled={launching}
+            className="px-4 py-2 text-sm font-semibold bg-slate-800 text-white rounded-lg
+              hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {launching ? 'Launching…' : 'Transfer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function DeviceDownload() {
   const [selected,       setSelected]       = useState({ settings: true, schedule: true, crew: true, vehicles: true, expenses: true });
@@ -191,6 +320,8 @@ export default function DeviceDownload() {
   const [progress,       setProgress]       = useState([]);
   const [done,           setDone]           = useState(false);
   const [error,          setError]          = useState('');
+  const [skippedFiles,   setSkippedFiles]   = useState(0);
+  const [showTransferModal, setShowTransferModal] = useState(false);
 
   const anySelected = Object.values(selected).some(Boolean);
   const scheduleSelected = selected.schedule;
@@ -221,6 +352,8 @@ export default function DeviceDownload() {
     if (key === 'schedule' && selected.schedule) setSelectedRoutes([]);
     if (key === 'settings' && selected.settings) setSelectedDevice('');
     setDone(false);
+    setShowTransferModal(false);
+    setSkippedFiles(0);
     setProgress([]);
     setError('');
   };
@@ -230,6 +363,8 @@ export default function DeviceDownload() {
     setSelected({ settings: !allOn, schedule: !allOn, crew: !allOn, vehicles: !allOn, expenses: !allOn });
     if (allOn) { setSelectedRoutes([]); setSelectedDevice(''); }
     setDone(false);
+    setShowTransferModal(false);
+    setSkippedFiles(0);
     setProgress([]);
     setError('');
   };
@@ -295,12 +430,44 @@ export default function DeviceDownload() {
     }
     setDownloading(true);
     setDone(false);
+    setSkippedFiles(0);
     setError('');
+
+    // Ask where to unzip the Palmtech transfer tool before touching the network
+    let unzipDirHandle = null;
+    let distFilesHandle = null;
+    let toolAlreadyExists = false;
+    if (window.showDirectoryPicker) {
+      try {
+        // readwrite must be requested here, while the click's user activation
+        // is still fresh — asking for it later (after the zip fetch/unzip,
+        // which can take a while) throws SecurityError instead of prompting.
+        unzipDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        try {
+          distFilesHandle = await getExistingNestedDirectory(
+            unzipDirHandle,
+            ['PalmtechDataTransfer', 'dist', 'files']
+          );
+          toolAlreadyExists = true;
+        } catch (err) {
+          if (err.name !== 'NotFoundError') throw err;
+        }
+      } catch (err) {
+        setDownloading(false);
+        if (err.name === 'AbortError') { setError('Download cancelled — no folder selected.'); return; }
+        setError('Failed to open folder picker.');
+        return;
+      }
+    }
 
     const routeParam = selectedRoutes.length > 0 ? `?route_codes=${selectedRoutes.join(',')}` : '';
 
-    // Build ordered task list — settings always first
+    // Build ordered task list — download the tool only when it is not already
+    // present in the folder selected by the operator.
     const tasks = [];
+    if (!toolAlreadyExists) {
+      tasks.push({ label: 'Palmtech Transfer Tool', endpoint: '/device/palmtech-tool', filename: 'PalmtechDataTransfer.zip', unzip: true, timeout: 120000 });
+    }
     if (selected.settings)  tasks.push({ label: 'Settings (BUS.DAT)',         endpoint: `/device/settings?serialnumber=${encodeURIComponent(selectedDevice)}`, filename: 'BUS.DAT'          });
     if (selected.crew)      tasks.push({ label: 'Driver Schedule (CREW.DAT)', endpoint: '/device/crew',                   filename: 'CREW.DAT'         });
     if (selected.vehicles)  tasks.push({ label: 'Vehicle Details (VEHICLE.DAT)', endpoint: '/device/vehicles',            filename: 'VEHICLE.DAT'      });
@@ -318,8 +485,16 @@ export default function DeviceDownload() {
       const task = tasks[i];
       setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: 'downloading' } : p));
       try {
-        const blob = await fetchBinary(task.endpoint);
-        triggerDownload(blob, task.filename);
+        const blob = await fetchBinary(task.endpoint, task.timeout);
+        if (task.unzip && unzipDirHandle) {
+          const skipped = await writeZipToDirectory(blob, unzipDirHandle);
+          setSkippedFiles(skipped.length);
+          distFilesHandle = await getNestedDirectory(unzipDirHandle, ['PalmtechDataTransfer', 'dist', 'files']);
+        } else if (distFilesHandle) {
+          await writeFileToDirectory(blob, distFilesHandle, task.filename);
+        } else {
+          triggerDownload(blob, task.filename);
+        }
         setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: 'done' } : p));
       } catch (err) {
         setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: 'error' } : p));
@@ -332,6 +507,10 @@ export default function DeviceDownload() {
               const clean = match ? match[1].replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').trim() : null;
               msg = `${task.filename}: ${clean || err.response?.status || 'Server error'}`;
             }
+          } else if (err.code === 'ECONNABORTED') {
+            msg = `${task.filename}: request timed out.`;
+          } else if (err.message) {
+            msg = `${task.filename}: ${err.message}`;
           }
         } catch {}
         setError(msg);
@@ -342,6 +521,7 @@ export default function DeviceDownload() {
 
     setDownloading(false);
     setDone(true);
+    setShowTransferModal(true);
   };
 
   const allOn = Object.values(selected).every(Boolean);
@@ -529,9 +709,17 @@ export default function DeviceDownload() {
 
       {/* Success */}
       {done && (
-        <div className="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium flex items-center gap-2">
-          <Check size={15} strokeWidth={3} />
-          All files downloaded successfully.
+        <div className="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+          <div className="flex items-center gap-2">
+            <Check size={15} strokeWidth={3} />
+            All files downloaded successfully.
+          </div>
+          {skippedFiles > 0 && (
+            <p className="text-xs text-emerald-600 font-normal mt-1 ml-[23px]">
+              {skippedFiles} legacy tool file{skippedFiles !== 1 ? 's' : ''} the browser wouldn't write were skipped
+              (unused source files — the app itself is unaffected).
+            </p>
+          )}
         </div>
       )}
 
@@ -580,6 +768,11 @@ export default function DeviceDownload() {
           onConfirm={() => { setShowSkipModal(false); proceedToDownload(); }}
           onClose={() => setShowSkipModal(false)}
         />
+      )}
+
+      {/* Transfer to device modal */}
+      {showTransferModal && (
+        <TransferModal onClose={() => setShowTransferModal(false)} />
       )}
     </div>
   );

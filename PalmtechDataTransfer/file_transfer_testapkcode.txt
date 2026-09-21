@@ -1,0 +1,817 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+
+const _usbMethodChannel = MethodChannel('usb_raw_channel');
+const _usbEventChannel  = EventChannel('usb_raw_events');
+
+void main() => runApp(const MyApp());
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'USB File Transfer',
+        theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+        home: const TransferScreen(),
+      );
+}
+
+class TransferScreen extends StatefulWidget {
+  const TransferScreen({super.key});
+  @override
+  State<TransferScreen> createState() => _TransferScreenState();
+}
+
+class _TransferScreenState extends State<TransferScreen> {
+  bool   _isConnected    = false;
+  double _progress       = 0.0;   // overall (files done / total files)
+  double _fileProgress   = 0.0;   // current file (chunks done / total chunks)
+  String _currentFileName = '';
+  bool   _isTransferring = false;
+  int    _zeroPacketCount = 0;
+
+  // Multi-file support
+  List<File>   _selectedFiles = [];
+
+  final List<String>     _logs            = [];
+  final ScrollController _scrollController = ScrollController();
+
+  StreamSubscription<dynamic>? _usbSubscription;
+  StreamController<int>?       _responseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _log('App started. Connect device via OTG then tap Connect.');
+  }
+
+  // ── Logging ──────────────────────────────────────────────────────────────
+  void _log(String msg) {
+    final t = DateTime.now().toIso8601String().split('T')[1].split('.')[0];
+    setState(() {
+      _logs.add('[$t] $msg');
+      if (_logs.length > 300) _logs.removeAt(0); // Prevent memory bloat/freeze
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  // ── Sync Files via Multi-File Picker ─────────────────────────────────────
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: ['DAT', 'LST', 'dat', 'lst'],
+      );
+
+      if (result == null || result.files.isEmpty) { 
+        _log('File selection cancelled.'); 
+        return; 
+      }
+
+      final files = result.paths
+          .where((path) => path != null)
+          .map((path) => File(path!))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+
+      setState(() => _selectedFiles = files);
+      _log('Successfully selected ${files.length} file(s).');
+      _log('💡 TIP: Long-press files in the picker to select multiples.');
+      for (final f in files) {
+        _log('  • ${f.path.split(Platform.pathSeparator).last}');
+      }
+    } catch (e) {
+      _log('Error picking files: $e');
+    }
+  }
+
+
+  // ── Connect ───────────────────────────────────────────────────────────────
+  Future<void> _connectToUsb() async {
+    _log('Scanning for USB devices...');
+    List<dynamic> devices;
+    try {
+      devices = await _usbMethodChannel.invokeMethod('listDevices');
+    } on PlatformException catch (e) {
+      _log('Error listing devices: ${e.message}'); return;
+    }
+    if (devices.isEmpty) {
+      _log('No USB devices found. Check OTG adapter.'); return;
+    }
+
+    final dev = devices[0] as Map;
+    _log('Found: ${dev['productName']} | Mfr: ${dev['manufacturerName']}');
+    _log('VID: ${(dev['vendorId'] as int).toRadixString(16).toUpperCase()}  '
+        'PID: ${(dev['productId'] as int).toRadixString(16).toUpperCase()}');
+
+    try {
+      final res = await _usbMethodChannel.invokeMethod('connect', {'deviceId': dev['deviceId']});
+      final info = res as Map;
+      _log('✅ ${info['message']}');
+      // Print HID descriptor and diag info
+      for (final line in (info['diag'] as String).split('\n')) {
+        if (line.trim().isNotEmpty) _log('  $line');
+      }
+
+      _usbSubscription = _usbEventChannel.receiveBroadcastStream().listen(
+        (dynamic data) {
+          if (data is String && data.startsWith('SYS: ')) {
+            _log('Native: ${data.substring(5)}');
+            // If the native side sent a "Connection lost" message, we should handle it
+            if (data.contains("Connection lost")) {
+              _handleDisconnect();
+            }
+          } else if (data is Uint8List) {
+            // Check if data is just zeros to avoid flooding/freezing logs
+            final isAllZeros = data.every((b) => b == 0);
+            if (!isAllZeros) {
+              _zeroPacketCount = 0;
+              final charCodes = data.where((b) => b != 0).toList();
+              final raw = String.fromCharCodes(charCodes).replaceAll(RegExp(r'[^\x20-\x7E]'), '.');
+              
+              // Always log raw data for debugging until protocol is stable
+              final hex = data.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+              _log('Recv: "$raw" | Hex: $hex...');
+
+              // Auto Handshake Detect removed to prevent race conditions with explicit _readVersion
+            } else {
+               setState(() => _zeroPacketCount++);
+            }
+
+            for (final b in data) _responseController?.add(b);
+          }
+        },
+        onError: (e) {
+          _log('USB stream error: $e');
+          _handleDisconnect();
+        },
+        onDone: () {
+          _log('USB stream session closed.');
+          _handleDisconnect();
+        },
+      );
+      setState(() => _isConnected = true);
+    } on PlatformException catch (e) {
+      _log('❌ Connection failed: ${e.message}');
+    }
+  }
+
+  // ── Disconnect ────────────────────────────────────────────────────────────
+  Future<void> _disconnectUsb() async {
+    _log('🔌 Initiating two-step Shutdown sequence...');
+    try {
+      // Step 1: Send VB6 "SHUTDOWN" command string ("s@")
+      // We add a space so the bug drops the space, not the '@'
+      _log('  → Sending s@ signal...');
+      await _write(ascii.encode('s@ ')); 
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      // Step 2: Send VB6 "EXIT TRIGGER" ("x" * 13)
+      // This is found inside the VB6 Disconnect_USB function
+      _log('  → Sending Exit Trigger (xxxxxxxxxxxxx)...');
+      await _write(ascii.encode('xxxxxxxxxxxxx ')); 
+      await Future.delayed(const Duration(milliseconds: 1000));
+      
+    } catch (e) {
+      _log('  (Shutdown sequence failed, proceeding with hard disconnect)');
+    }
+
+    await _usbMethodChannel.invokeMethod('disconnect');
+    _handleDisconnect();
+    _log('Disconnected.');
+  }
+
+  void _handleDisconnect() {
+    _usbSubscription?.cancel();
+    _usbSubscription = null;
+    setState(() {
+       _isConnected = false;
+    });
+  }
+
+  // ── Init Transfer Mode ────────────────────────────────────────────────────
+  Future<void> _initTransferMode() async {
+    if (!_isConnected) { _log('❌ Not connected.'); return; }
+    _log('🚀 Initializing Transfer Mode...');
+    // VB6 sends exactly 27 't's to trigger the mode on the device
+    final trigger = 't' * 27;
+    await _write(ascii.encode(trigger));
+    await Future.delayed(const Duration(milliseconds: 500));
+    _log('✅ Trigger sent. Device screen should change now.');
+  }
+
+  // ── Send all selected files ────────────────────────────────────────────────
+  Future<void> _sendFiles() async {
+    if (!_isConnected) { _log('❌ Not connected.'); return; }
+    if (_selectedFiles.isEmpty) { _log('❌ No files selected.'); return; }
+
+    setState(() { _isTransferring = true; _progress = 0; });
+
+    try {
+      _log('🚀 Starting Handshake Sequence...');
+      _log('  ℹ️  Sending aVERSION.DAT#...');
+
+      // Step 1: Read VERSION.DAT
+      if (!await _readVersion()) {
+        throw Exception('Handshake failed: Device did not respond to version request.');
+      }
+
+      // Step 2: Write 'v@' (Success command/ack)
+      _log('  → Sending v@ acknowledge...');
+      await _write(ascii.encode('v@ ')); 
+      await Future.delayed(const Duration(milliseconds: 1000));
+      _log('  ✅ Handshake confirmed.');
+
+      // Step 3: Set Date/Time
+      _log('  → Syncing Date/Time...');
+      await _syncDateTime();
+      _log('  ✅ Date/Time updated.');
+      await Future.delayed(const Duration(milliseconds: 1500)); // Extra breathing room for device RTC
+
+      // Step 4: Sort and Transfer Files based on recommended order
+      // Recommended: ROUTELST.LST -> STAGE.LST -> LANGUAGE.DAT -> RTE.DAT
+      final sortedFiles = List<File>.from(_selectedFiles);
+      const priorityOrder = ['ROUTELST.LST', 'STAGE.LST', 'LANGUAGE.DAT', 'RTE.DAT'];
+      
+      sortedFiles.sort((a, b) {
+        final nameA = a.path.split(Platform.pathSeparator).last.toUpperCase();
+        final nameB = b.path.split(Platform.pathSeparator).last.toUpperCase();
+        final idxA = priorityOrder.indexOf(nameA);
+        final idxB = priorityOrder.indexOf(nameB);
+        
+        if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
+        if (idxA != -1) return -1;
+        if (idxB != -1) return 1;
+        return nameA.compareTo(nameB);
+      });
+
+      int fileIdx = 0;
+      for (final file in sortedFiles) {
+        fileIdx++;
+        final name = file.path.split(Platform.pathSeparator).last;
+        setState(() {
+          _currentFileName = name;
+          _fileProgress    = 0;
+        });
+
+        _log('──────────────────────────────');
+        _log('File $fileIdx/${sortedFiles.length}: $name');
+
+        // VB Logic: Sync Time is typically done ONCE at the start of the batch
+        // removed _syncDateTime() from inside the loop to avoid overwhelming the device
+
+        await _sendSingleFile(file);
+        // Inter-file delay: give the device more time (2s) to commit flash saves
+        await Future.delayed(const Duration(milliseconds: 2000));
+        setState(() => _progress = fileIdx / sortedFiles.length);
+      }
+      _log('══════════════════════════════');
+      _log('All ${sortedFiles.length} file(s) transferred!');
+      _log('📤 Sending UPLOADSUCCESS (o@)...');
+      await _write(ascii.encode('o@ ')); 
+    } catch (e) {
+      _log('❌ Transfer error: $e');
+    } finally {
+      setState(() { _isTransferring = false; _progress = 0; });
+    }
+  }
+
+  bool   _isHandshaking  = false;
+
+  // ── Handshake Helpers ──────────────────────────────────────────────────────
+
+  Future<bool> _readVersion() async {
+    _isHandshaking = true;
+    try {
+      // VB Read_USB sends: "a" + filename + "#"
+      // Then waits for "s[filesize]#", sends 30 k's, then reads data packets
+      _log('  Phase 1: Passively listening for 3s...');
+
+    // Phase 1: Listen passively for 5s
+    {
+      final List<int> accumulated = [];
+      _responseController = StreamController<int>.broadcast();
+      final sub = _responseController!.stream.listen((b) {
+        if (b != 0) accumulated.add(b);
+      });
+      bool gotData = false;
+      try {
+        await _responseController!.stream
+            .firstWhere((b) => b != 0)
+            .timeout(const Duration(seconds: 5));
+        gotData = true;
+      } catch (_) {}
+      await sub.cancel();
+      await _responseController?.close();
+      _responseController = null;
+
+      if (gotData && accumulated.isNotEmpty) {
+        final versionStr = String.fromCharCodes(accumulated)
+            .replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
+        _log('  📥 Device sent: "$versionStr"');
+        return _checkVersion(versionStr);
+      }
+    }
+
+    // Phase 2: Active request using VB protocol
+    // We will try 'a' (Access) first, then 'r' (Read), then 'g' (Get)
+    final prefixes = ['a', 'r', 'g'];
+
+    for (var p in prefixes) {
+      if (!_isConnected) return false;
+      final cmd = '$p' 'VERSION.DAT#';
+      _log('  Phase 2: Sending "$cmd"...');
+      _responseController = StreamController<int>.broadcast();
+      final List<int> rawBytes = [];
+      final sub = _responseController!.stream.listen((b) => rawBytes.add(b));
+
+      try {
+        await _write(ascii.encode(cmd));
+
+        // Wait for 's' byte (file size header from device)
+        _log('    Waiting for response to "$cmd"...');
+        await _responseController!.stream
+            .firstWhere((b) => b == 115) // 115 is 's'
+            .timeout(const Duration(seconds: 4));
+
+        // If we got 's', we follow the 'k' ack protocol
+        await Future.delayed(const Duration(milliseconds: 500));
+        await sub.cancel();
+
+        final headerStr = String.fromCharCodes(rawBytes.where((b) => b != 0))
+            .replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
+        _log('    📥 Header: "$headerStr"');
+
+        // Parse file size
+        final sIdx = headerStr.indexOf('s');
+        final hashIdx = headerStr.indexOf('#', sIdx + 1);
+        int fSize = 0;
+        if (sIdx >= 0 && hashIdx > sIdx) {
+          fSize = int.tryParse(headerStr.substring(sIdx + 1, hashIdx)) ?? 0;
+        }
+
+        _log('    → Acking $fSize bytes with 30 k-s...');
+        _responseController = StreamController<int>.broadcast();
+        await _write(ascii.encode('k' * 30));
+
+        final List<int> fileData = [];
+        final dataSub = _responseController!.stream.listen((b) => fileData.add(b));
+        await Future.delayed(Duration(milliseconds: (fSize / 10).ceil() + 1000));
+        await dataSub.cancel();
+
+        final versionStr = String.fromCharCodes(fileData.where((b) => b != 0))
+            .replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
+        _log('    📥 Content: "${versionStr.length} bytes received"');
+        return _checkVersion(versionStr);
+
+      } catch (e) {
+        await sub.cancel();
+        _log('    No response to "$cmd"');
+        await _responseController?.close();
+        _responseController = null;
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    return false;
+  } finally {
+    _isHandshaking = false;
+  }
+}
+
+  bool _checkVersion(String versionStr) {
+    // The device often prepends 'd' (0x64) as a packet header
+    final cleanVersion = versionStr.replaceAll(RegExp(r'^d+'), '').trim();
+    
+    final rPos = cleanVersion.lastIndexOf('R');
+    bool isValid = false;
+    if (rPos > 0) {
+      final prefix = cleanVersion.substring(0, rPos).trim();
+      isValid = prefix.endsWith('PVT_GEN_12') || prefix == 'PVT_GEN_12';
+    }
+    if (!isValid) isValid = cleanVersion.contains('PVT_GEN_12');
+    
+    if (isValid) {
+      _log('  ✅ Version Match: "$cleanVersion"');
+    } else {
+      _log('  ❌ Version mismatch: "$cleanVersion" (expected PVT_GEN_12...)');
+    }
+    return isValid;
+  }
+
+  Future<void> _syncDateTime() async {
+    final now = DateTime.now();
+    // VB6 Format: "DATEANDTIME-ddmmyyhhmmss"
+    final dd   = now.day.toString().padLeft(2, '0');
+    final mm   = now.month.toString().padLeft(2, '0');
+    final yyyy = now.year.toString(); // 4-digit year as required by VB6 logic
+    final hh   = now.hour.toString().padLeft(2, '0');
+    final min  = now.minute.toString().padLeft(2, '0');
+    final ss   = now.second.toString().padLeft(2, '0');
+
+    // Wire Protocol: "D@" + "DDMMYYYYHHMMSS" + "\0"
+    final dateStr = 'D@$dd$mm$yyyy$hh$min$ss\x00'; 
+    _log('  → Syncing Time (Wire): $dateStr');
+
+    _responseController = StreamController<int>.broadcast();
+    try {
+      await _write(ascii.encode(dateStr));
+      // VB waits for response containing "t" then checks for "Success"
+      final List<int> resp = [];
+      final sub = _responseController!.stream.listen((b) {
+        if (b != 0) resp.add(b);
+      });
+      
+      // Wait for 't' (116) which is the start of "tSuccess"
+      await _responseController!.stream
+          .firstWhere((b) => b == 116) 
+          .timeout(const Duration(seconds: 5));
+      
+      // Give the device a moment to finish sending "Success"
+      await Future.delayed(const Duration(milliseconds: 1000));
+      await sub.cancel();
+      
+      final respStr = String.fromCharCodes(resp).replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
+      _log('  Time sync response: "$respStr"');
+      
+      if (respStr.toLowerCase().contains('success') || respStr.toLowerCase().contains('t')) {
+        _log('  ✅ Time sync confirmed.');
+      } else {
+        _log('  ⚠️ Time sync sent (Note: Response was "$respStr")');
+      }
+    } catch (e) {
+      _log('  ⚠️ Time sync: timed out waiting for "tSuccess".');
+    } finally {
+      await _responseController?.close();
+      _responseController = null;
+    }
+    await Future.delayed(const Duration(milliseconds: 1000));
+  }
+
+  Future<void> _sendSingleFile(File file) async {
+    final fileBytes = await file.readAsBytes();
+    final filename  = file.path.split(Platform.pathSeparator).last.toUpperCase();
+    final fSize     = fileBytes.length;
+
+    if (fSize == 0) { _log('  (empty, skipping)'); return; }
+
+    _log('  Size: $fSize bytes');
+    try {
+      // Step 0: Small safety delay instead of flush
+      await Future.delayed(const Duration(milliseconds: 200)); 
+      _responseController = StreamController<int>.broadcast();
+
+      // Step 1: Send header  b<FILENAME>#<SIZE>#
+      // We start the listener BEFORE the write to avoid missing a fast 'k' response
+      final headerAckFuture = _waitForAck(isInitial: true);
+
+      final header = 'b$filename#$fSize# '; 
+      _log('  → Header: $header');
+      final headerWritten = await _write(ascii.encode(header));
+      if (headerWritten <= 0) {
+        throw Exception('Header write failed ($headerWritten) — device not receiving data.');
+      }
+      _log('  ✅ Header sent ($headerWritten bytes confirmed)');
+
+      // Step 2: Wait for 'k' ack (107) from device
+      _log("  Waiting for device 'k' ack...");
+      if (!await headerAckFuture) {
+        throw Exception('Device failed to send "k" acknowledgment for $filename. Protocol timed out.');
+      }
+      _log("  ✅ Ack received. Sending chunks...");
+
+      // Step 3: Send 60-byte chunks, each framed d<data>V
+      // Total packet size = 1 (d) + 60 (data) + 1 (V) = 62 bytes.
+      // MUST be <= 64 bytes for HID Interrupt endpoints.
+      const chunkSize    = 63;
+      final totalPackets = (fSize / chunkSize).ceil();
+      int   packets      = 0;
+
+      for (int i = 0; i < fSize; i += chunkSize) {
+        final end   = (i + chunkSize < fSize) ? i + chunkSize : fSize;
+        final chunk = fileBytes.sublist(i, end);
+        packets++;
+
+        final pkt = BytesBuilder();
+        pkt.addByte(100); // 'd'
+        pkt.add(chunk);
+        pkt.addByte(86);  // 'V'
+        final written = await _write(pkt.toBytes());
+        if (written <= 0) {
+          throw Exception('Write returned $written — device rejected data at chunk $packets.');
+        }
+
+        // Throttle transmission: give the embedded device 20ms to process the 64 bytes
+        await Future.delayed(const Duration(milliseconds: 20));
+
+        if (packets % 20 == 0 || packets == totalPackets) {
+          setState(() => _fileProgress = packets / totalPackets);
+          _log('  Chunk $packets/$totalPackets (${(_fileProgress*100).toStringAsFixed(0)}%) — $written bytes confirmed');
+        }
+
+        // Every 260 packets: MUST wait for intermediate sync ack ('k')
+        if (packets % 260 == 0 && packets < totalPackets) {
+          _log('  Sync Point ($packets packets): Waiting for mandatory "k" ack...');
+          
+          // Start listener BEFORE the final trigger write in the previous loop? 
+          final syncAckFuture = _waitForAck(isInitial: false);
+          
+          if (!await syncAckFuture) {
+            throw Exception('Sync failure: Device failed to acknowledge packet $packets.');
+          }
+          _log('  ✅ Sync confirmed. Proceeding...');
+        }
+      }
+
+      _log('  ✅ $filename done! ($packets packets)');
+    } finally {
+      await _responseController?.close();
+      _responseController = null;
+    }
+  }
+
+  // ── Helper: waits for 'k' (107) or 'K' (75) from device ───────────────────
+  Future<bool> _waitForAck({required bool isInitial}) async {
+    final timeoutSeconds = isInitial ? 10 : 5;
+    final List<int> seenData = [];
+    final sub = _responseController!.stream.listen((b) => seenData.add(b));
+    try {
+      // Look for 107 ('k') or 75 ('K')
+      await _responseController!.stream
+          .firstWhere((b) => b == 107 || b == 75)
+          .timeout(Duration(seconds: timeoutSeconds));
+      return true;
+    } catch (_) {
+      if (seenData.isNotEmpty) {
+        final raw = String.fromCharCodes(seenData).replaceAll(RegExp(r'[^\x20-\x7E]'), '.');
+        _log('    ⚠️ Unexpected data instead of ack: "$raw"');
+      }
+      return false;
+    } finally {
+      await sub.cancel();
+    }
+  }
+
+  // ── Helper: Flush incoming USB buffer ─────────────────────────────────────
+  Future<void> _flush(int ms) async {
+    _log('  (Flushing buffer...)');
+    final sub = _usbEventChannel.receiveBroadcastStream().listen((_) {});
+    // Wait for the requested period to absorb any lagging packets
+    await Future.delayed(Duration(milliseconds: ms));
+    await sub.cancel();
+    await Future.delayed(const Duration(milliseconds: 50));
+  }
+
+  // ── Write helper: returns bytes written, throws on complete failure ─────
+  Future<int> _write(List<int> data) async {
+    // PAD TO 64 BYTES EXPLICITLY TO MATCH VB6 HID LOGIC
+    // VB6 had a truncation bug where the last character of the buffer was dropped
+    final paddedData = List<int>.filled(64, 0);
+    
+    // For i = 0 to 63: if (i + 1) < data.length then paddedData[i] = data[i] else paddedData[i] = 0.
+    for (int i = 0; i < 64; i++) {
+      if ((i + 1) < data.length) {
+        paddedData[i] = data[i];
+      } else {
+        paddedData[i] = 0;
+      }
+    }
+
+    try {
+      final result = await _usbMethodChannel.invokeMethod<int>('write', {
+        // Force the Native Android interface to pass precisely 64 bytes
+        'data': Uint8List.fromList(paddedData),
+      }).timeout(const Duration(seconds: 8));
+      return result ?? -1;
+    } on TimeoutException {
+      throw Exception('Write timed out after 8s.');
+    } on PlatformException catch (e) {
+      // This is thrown when ALL 4 strategies returned -1
+      throw Exception('Device rejected write: ${e.message}');
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _usbSubscription?.cancel();
+    _responseController?.close();
+    super.dispose();
+  }
+
+  // ── UI ─────────────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Palmtec File Transfer'),
+        backgroundColor: Colors.blueAccent,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Connection card ──
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('USB Status:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      Text(
+                        _isConnected ? 'CONNECTED ●' : 'DISCONNECTED ○',
+                        style: TextStyle(
+                          color: _isConnected ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                  if (_zeroPacketCount > 0)
+                    Text('($_zeroPacketCount null reports skipped)',
+                      style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: !_isConnected && !_isTransferring ? _connectToUsb : null,
+                        icon: const Icon(Icons.usb), label: const Text('Connect')),
+                      ElevatedButton.icon(
+                        onPressed: _isConnected && !_isTransferring ? _initTransferMode : null,
+                        icon: const Icon(Icons.flash_on), label: const Text('Init Mode')),
+                      ElevatedButton.icon(
+                        onPressed: _isConnected && !_isTransferring ? _readVersion : null,
+                        icon: const Icon(Icons.help_outline), label: const Text('Req Ver')),
+                      ElevatedButton.icon(  
+                        onPressed: _isConnected && !_isTransferring ? _syncDateTime : null,
+                        icon: const Icon(Icons.access_time), label: const Text('Sync Time')),
+                      ElevatedButton.icon(
+                        onPressed: _isConnected && !_isTransferring ? _disconnectUsb : null,
+                        icon: const Icon(Icons.close), label: const Text('Disconnect'),
+                        style: ElevatedButton.styleFrom(foregroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 8))),
+                    ],
+                  ),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // ── File picker card ──
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(children: [
+                  Text(
+                    _selectedFiles.isEmpty
+                        ? 'No files selected'
+                        : '${_selectedFiles.length} file(s) selected',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  if (_selectedFiles.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: 60,
+                      child: ListView(children: _selectedFiles.map((f) => Text(
+                        '  • ${f.path.split(Platform.pathSeparator).last}',
+                        style: const TextStyle(fontSize: 12),
+                      )).toList()),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: _isTransferring ? null : _pickFiles,
+                    icon: const Icon(Icons.file_open),
+                    label: const Text('Select .DAT / .LST Files'),
+                  ),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // ── Send button ──
+            ElevatedButton.icon(
+              onPressed: (_isConnected && _selectedFiles.isNotEmpty && !_isTransferring) ? _sendFiles : null,
+              icon: const Icon(Icons.send),
+              label: const Text('Send File(s) to Device'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.green, foregroundColor: Colors.white),
+            ),
+            const SizedBox(height: 8),
+
+            // ── Progress bars ──
+            if (_isTransferring) ...[
+              const SizedBox(height: 4),
+              // Per-file progress
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'File: $_currentFileName  (${(_fileProgress * 100).toStringAsFixed(0)}%)',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 2),
+                        LinearProgressIndicator(
+                          value: _fileProgress,
+                          backgroundColor: Colors.blue.shade100,
+                          color: Colors.blue,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Overall progress
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Overall: ${(_progress * 100).toStringAsFixed(0)}% of ${_selectedFiles.length} file(s)',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 2),
+                        LinearProgressIndicator(
+                          value: _progress,
+                          backgroundColor: Colors.green.shade100,
+                          color: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ] else
+              const SizedBox(height: 10),
+
+            // ── Log terminal ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Execution Logs',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 18),
+                  tooltip: 'Copy all logs',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: _logs.join('\n')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Logs copied to clipboard'), duration: Duration(seconds: 1)),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                    color: Colors.black87, borderRadius: BorderRadius.circular(8)),
+                child: SelectionArea(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(8),
+                    itemCount: _logs.length,
+                    itemBuilder: (ctx, i) => Text(_logs[i],
+                        style: const TextStyle(
+                            color: Colors.greenAccent, fontFamily: 'monospace', fontSize: 11)),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+

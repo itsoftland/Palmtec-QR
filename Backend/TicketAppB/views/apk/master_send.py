@@ -1,7 +1,10 @@
 import io
+import os
 import struct
 import zipfile
 import logging
+from pathlib import Path
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from ...models import Settings, Route, Employee, VehicleType, ExpenseMaster, Stage, Fare, Currency, RouteStage, Company, SettingsProfile, ETMDevice
 from django.views.decorators.csrf import csrf_exempt
@@ -698,3 +701,47 @@ def get_masterdata_bundle(request):
     response = HttpResponse(buf.read(), content_type='application/zip')
     response['Content-Disposition'] = 'attachment; filename="masterdata.zip"'
     return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def get_palmtech_tool_zip(request):
+    """
+    GET /device/palmtech-tool
+    Returns the PalmtechDataTransfer desktop app (USB/serial bridge the
+    operator runs locally to push downloaded files onto the ETM device) as a ZIP.
+    """
+    tool_dir = Path(settings.BASE_DIR).parent / 'PalmtechDataTransfer'
+    if not tool_dir.is_dir():
+        return HttpResponse('TOOL_NOT_FOUND', status=404)
+
+    # Windows shell metadata files — the browser's File System Access API refuses
+    # to create files with these names on any platform, so leave them out entirely.
+    skip_names = {'desktop.ini', 'thumbs.db'}
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_STORED) as zf:
+        for root, _, files in os.walk(tool_dir):
+            for fname in files:
+                if fname.lower() in skip_names:
+                    continue
+                fpath = Path(root) / fname
+                zf.write(fpath, arcname=str(Path('PalmtechDataTransfer') / fpath.relative_to(tool_dir)))
+    buf.seek(0)
+
+    response = HttpResponse(buf.read(), content_type='application/zip')
+    response['Content-Disposition'] = 'attachment; filename="PalmtechDataTransfer.zip"'
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def launch_palmtech_tool(request):
+    """
+    POST /device/palmtech-launch
+
+    Returns a browser protocol URL. The executable must be launched by the
+    operator's PC; a Django process must never try to execute a client-local
+    path on the live server.
+    """
+    return JsonResponse({'status': 'ready', 'launch_url': 'palmtec://launch'})

@@ -1,0 +1,384 @@
+USB DOWNLOAD----------------------------
+
+`VERSION.DAT`
+
+`STATUS.DAT
+
+Master Data Provisioning (The Sequential Write)
+The system then iterates through several functions to create and write master files. The order is strict:
+1.  **`DownSTGNM`**: Writes `ROUTELST.LST` (List of routes). 
+Public Type RouteLST        ' Loaded via ROUTELST.LST
+    Code As String * 5
+    Name As String * 25
+    NoOfStage As Byte
+    MinFare As Single
+    FareType As Byte
+    AllowHalf As Byte
+    AllowConc As Byte
+    AllowPh  As Byte
+    AllowLug As Byte
+    AllowAdjust As Byte
+    StartFrom  As Byte
+    BusType As Byte
+    BusTypeName As String * 16
+    OptedKM As Single
+    AllowPass As Byte 
+ End Type
+
+Public Type Route           ' Typically associated with RTE.DAT
+    RouteCode As String * 5
+    FareType As Byte
+    NOS As Byte
+    NoOfDupFare As Byte
+End Type
+
+2.  **`DownSTGE`**: Writes `STAGE.LST` (Global stage names).
+Public Type Stage
+    StageName As String * 12
+    Distance As Integer
+    temp As String * 2       ' Usually used as null padding
+End Type
+
+Public Type STAGEDETAILS     ' An alternate version used in newer firmwares
+    StageName As String * 12
+    Distance As Single
+End Type
+
+3.  **`DownLanguage`**: Writes `LANGUAGE.DAT` (UI strings in the local language).
+Public Type LANGUAGE_STAG
+    RouteCode As String * 5
+    LocalLanguageStageName(23) As Byte   ' 24 byte character array for unicode strings
+    stagecode As Integer
+    temp As Byte
+End Type
+
+
+4.  **`DownRTE`**: Writes `RTE.DAT` (Detailed route definitions).
+5.  **`DownCURRENCY`**: Writes `CURRENCY.DAT` (Currency names/symbols).
+6.  **`DownCREW`**: Writes `CREW.DAT` (List of conductors/drivers).
+Public Type CREWDET
+    EmpName As String * 16
+    EmpId As String * 8
+    EmpType As Byte
+    PassWord As String * 7
+End Type
+
+7.  **`DownVEHICLE`**: Writes `VEHICLE.DAT` (List of bus numbers).
+Public Type VEHICLE
+    BUSID As Byte
+    Busno As String * 16
+    Reserved As String * 15
+End Type
+
+8.  **`DownEXPDET`**: Writes `EXPENSEDET.DAT` (List of valid expense types).
+Public Type EXPENSEDET       ' Config sent mapping Expense Types to Names
+    ucType As String * 5
+    expname As String * 16
+    Reserved As String * 43
+End Type
+
+Public Type EXPENSES         ' Log returned holding exactly how much was spent
+    ucScheduleNo As Byte
+    ucTripNo As Byte
+    EName As String * 16
+    Busno As String * 16
+    fExpens As Single        ' Expense Amount
+    fDiesel As Single        ' Diesel amount/volume
+    ucType As Byte
+    Hour As Byte
+    Minutes As Byte
+    Day As Byte
+    Month As Byte
+    Year As Integer
+    RptNo As Long
+    Reserved As String * 11
+End Type
+
+
+### 4. Finalization
+*   Once finished, if using USB, it sends a `SHUTDOWN` 
+
+
+------------------------------------------------------------------------------------------------------------------------
+usb upload--------------------------------------
+
+collection
+
+1.VERSION.DAT
+
+Public Type VERSION_TYPE
+    Version                 As String * 16
+End Type
+
+2.ODOMETER.DAT
+
+Public Type SETUP   'BUS.DAT
+
+'''Modified on 14 -03 -2009y syamkrishna as per the code given by R&D
+    MainDisp As String * 18
+    MainDisp2 As String * 23
+    bhl1 As String * 32
+    bhl2 As String * 32
+    bhl3 As String * 32
+    bfl1 As String * 32
+    bfl2 As String * 32
+    PaperFeed As Byte
+    PalmtecID As String * 6
+    DefaultFull As Byte
+    HalfPer As Byte
+    ConPer As Byte
+    STMaxAmt As Single
+    STMinCon As Single
+    PhyPer As Byte
+    LuggageUnitRateEdit As Byte
+    LuggageUnitRate As Single
+    StageUpdation As Byte
+    StageDisplayFont As Byte
+    
+    UseDuplicate As Byte
+    UseDup1 As Byte
+    Roundoff As Byte
+    RoundUp As Byte
+    Currency    As String * 8
+    RoundAmt As Integer 'in paisa
+    '''''''''''''''''''''''''added ON 14-3-2009
+    ucbAdjust As Byte
+    ucbReviewPasswd As Byte
+    ucbReportPasswd As Byte
+    ucbSTFromStage As Byte
+    ucbSTFareEdit As Byte
+    cMasterClearPassword As String * 11
+    ReportFlag As Byte
+    NextFareRound As Byte
+    UpdateStageMsg As Byte '0 - Disable 1 - Enable
+    EnableRemoveTicket As Byte '0 - Disable 1 - Enable
+    EnableStageFont As Byte '0 - Disable 1 - Enable
+    EnableStageDefault As Byte
+    PrinterSel As Byte
+    OdometerEntry As Byte
+    TicketNoBigFont As Byte
+    CrewCheck As Byte
+    PhNo As String * 13
+    TripSMS As Byte
+    ScheduleSMS As Byte
+   ''''*****added By Sangeetha On 13-08-2012******''''
+    TicketRpt As Byte
+    Busno As Byte
+    Driver As Byte
+    Conductor As Byte
+    Inspectorreport As Byte
+    RepeatST As Byte
+    sendbillEnable As Byte
+    TripsendEnable As Byte
+    SchedulesendEnable As Byte
+    Sendpend As Byte
+    PhNo2 As String * 13
+   'GPRSPACK
+    AccessPoint As String * 24
+    DestAdds As String * 32
+   ' PrtNum As String * 8
+    Username As String * 16
+    PassWord As String * 16
+    Uploadpath As String * 32
+    Downloadpath As String * 32
+    HttpUrl As String * 64
+    GprsEnable As Byte
+    MsgPrompt As Byte
+    ExpEnable As Byte
+    SmartCard As Byte  ''sarika on 05-10-2012
+    Modomon As Byte
+    FtpEnable As Byte
+    RemovePswd As String * 11
+    StageReport_E_D As Byte
+    StRoundoff_E_D As Byte
+    StRoundoff_Amt As Integer
+    Simplereport As Byte
+    ReportFONT As Byte
+    MultiplePass As Byte
+    InspectorSMS As Byte
+    StageEntry As Byte
+    PhNo3 As String * 13
+    AutoShutdownEnable As Byte
+    UserPasswordEnable As Byte
+    DieselEntryEnable As Byte
+    TripTimeEnable As Byte
+    TripCloseReport As Byte
+    ucPaperFeed As Byte
+    refund As Byte
+    shedule_close_rpt As Byte 'asish(30082019)
+    ladis_per As Byte 'asish(30082019)
+    seniar_per As Byte 'asish(30082019)
+    ucTemp As String * 70 '73 '454 '470 '456
+    
+   ' ucTemp As String * 474 '489 ' //960+64-> 1024BYTE
+''''********End**********''''
+End Type
+
+
+3.EXPENSE.DAT
+
+Public Type EXPENSEDET       ' Config sent mapping Expense Types to Names
+    ucType As String * 5
+    expname As String * 16
+    Reserved As String * 43
+End Type
+
+Public Type EXPENSES
+
+    ucScheduleNo As Byte
+    ucTripNo As Byte
+    EName As String * 16
+    Busno As String * 16
+     fExpens As Single
+    fDiesel As Single
+    ucType As Byte
+    Hour As Byte
+    Minutes As Byte
+    Day As Byte
+    Month As Byte
+    Year As Integer
+'    Eid As String * 4
+    RptNo As Long
+    Reserved As String * 11
+End Type
+
+
+4.INSPECTOR.DAT
+
+Public Type INSPECTORDET
+    ucInspectorId As String * 8
+    ucScheduleNo As Byte
+    ucTripNo As Byte
+    RouteCode As String * 5
+    Stage As String * 12
+    InsDay As Byte
+    InsMonth As Byte
+    InsYear As Integer
+    InsHour As Byte
+    InsMinutes As Byte
+    Reserved As String * 31
+End Type
+
+
+
+SCHEDULE
+
+1 UploadTKT
+--FnameUp = "TKTS" & Fint & ".DAT"
+2 UploadPASS
+----PASS.PAS
+	
+Public Type PTicket 'size '48'32
+   TicketNo As Long
+   From As Byte
+   To As Byte
+   Full As Byte
+   Half As Byte
+   st As Byte
+   Phy As Byte
+   Lugg As Byte
+   Amount As Single
+   Luggage As Single
+   Hr As Byte
+   Minut As Byte
+   Typ As Byte
+   Dy As Byte
+   Mn As Byte
+   ucTemp As String * 5
+   cTripNo As Byte                        'added for kct
+   bBusWarrent As Byte
+   Refundsts As Byte '1 for refund
+   RefundAmt As Single
+   ladies_count As Byte 'asish(30082019)
+   seniar_count As Byte 'asish(30082019)
+   Reserved As String * 10 '12
+End Type
+
+
+3 CovertColln
+`T.CON
+Public Type PASSCONC      '56 Bytes
+    
+    PassNo As String * 11
+    TicketNo As Long
+    Name As String * 12 '24 asish(30082019)
+    Amount As Single
+    DateofBirth As String * 4
+    Startingperiod As Byte
+    EndPeriod As Byte
+    StartStage As Byte
+    EndStage As Byte
+    ViaStage As Byte
+    TransID As Byte
+    PassType As Integer
+    Reserved As String * 1
+End Type
+
+RPT01.DAT-
+	Public Type PReport
+    STicketNo As Long
+    ETicketNo As Long
+    InHandAmount As Single
+    TotalColl As Single
+    FullColl As Single
+    HalfColl As Single
+    PhyColl As Single
+    LuggageColl As Single
+    STColl As Single
+    AdjustColl As Single
+    TotalKM As Single
+    CessAmount As Single
+    ExpenseAmount As Single
+    WarrantAmount As Single
+    DeafAndDumpAmount As Single
+    OperatedKM As Single
+    DieselFilled As Single
+    CancelledKM As Single
+     
+    Full As Integer
+    Half As Integer
+    Phy As Integer
+    st As Integer
+    Free As Integer
+    Adjust As Integer
+    Conc As Integer
+    Others As Integer
+    Lugg As Integer
+    gPass As PASSCONC
+    sPass As Integer
+    Warrant As Integer
+    DeafAndDump As Integer
+    CessCount As Integer
+    TotalPassenger As Integer
+    
+    SCHEDULE As Byte
+    TripNo As Byte
+    UpDownTrip As Byte
+    RouteCode As String * 5
+    StartD As Byte
+    StartMO As Byte
+    StartY As Byte
+    StartH As Byte
+    StartM As Byte
+    EndD As Byte
+    EndMO As Byte
+    EndY As Byte
+    EndH As Byte
+    EndM As Byte
+    
+    DepotCode As String * 6
+    DepotName As String * 11
+    Driver As String * 16
+    Conductor As String * 16
+    Cleaner As String * 16
+    Busno As String * 16
+    FareType As Byte
+    
+    ladies_count As Integer ' asish(30082019)
+    seniar_count As Integer
+    ladies_coll As Single
+    seniar_coll As Single
+End Type    'size 256
+
+
+DELETETKTS

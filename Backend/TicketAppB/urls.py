@@ -226,6 +226,8 @@ urlpatterns = [
     path('etm-devices/<int:device_id>/delete',          device_registry_views.delete_device,        name='etm_delete'),
 
     # Palmtec device data APIs (server → APK → USB → device)
+    path('device/palmtech-tool', palmtec_views.get_palmtech_tool_zip),
+    path('device/palmtech-launch', palmtec_views.launch_palmtech_tool),
     path('device/routes',      palmtec_views.get_routes_list),
     path('device/settings',    palmtec_views.get_settings_file),
     path('device/crew',        palmtec_views.get_crew_file),
