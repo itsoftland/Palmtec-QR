@@ -10,6 +10,7 @@ class TicketDataSerializer(serializers.ModelSerializer):
         4:  'Luggage',
         8:  'PH',
         16: 'Student',
+        32: 'Pass',
     }
 
     ticket_type_display   = serializers.SerializerMethodField()

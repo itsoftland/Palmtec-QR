@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 from rest_framework.response import Response
 from django.db.models import Q, Sum, Count
 from rest_framework.decorators import api_view, permission_classes
@@ -523,9 +524,18 @@ def apk_tickets(request):
             status=404
         )
 
-    totals = {'full': 0, 'half': 0, 'st': 0, 'phy': 0, 'lugg': 0, 'ladies': 0, 'senior': 0}
+    totals = {'full': 0, 'half': 0, 'st': 0, 'phy': 0, 'lugg': 0, 'ladies': 0, 'senior': 0, 'pass': 0}
+    # category-wise ticket amount — ticket_amount is per-row, not per-category, so
+    # it's only attributable to a single category when that row has exactly one
+    # non-zero category count; rows mixing categories fall into 'mixed'.
+    category_amounts = {'full': Decimal('0'), 'half': Decimal('0'), 'st': Decimal('0'), 'phy': Decimal('0'),
+                         'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0'),
+                         'mixed': Decimal('0')}
     ticket_list = []
     for t in qs:
+        # TransactionData has no pass_count column — pass_number presence marks a pass ticket.
+        pass_count = 1 if t.pass_number else 0
+
         totals['full'] += t.full_count or 0
         totals['half'] += t.half_count or 0
         totals['st'] += t.st_count or 0
@@ -533,6 +543,24 @@ def apk_tickets(request):
         totals['lugg'] += t.lugg_count or 0
         totals['ladies'] += t.ladies_count or 0
         totals['senior'] += t.senior_count or 0
+        totals['pass'] += pass_count
+
+        row_counts = {
+            'full': t.full_count or 0,
+            'half': t.half_count or 0,
+            'st': t.st_count or 0,
+            'phy': t.phy_count or 0,
+            'lugg': t.lugg_count or 0,
+            'ladies': t.ladies_count or 0,
+            'senior': t.senior_count or 0,
+            'pass': pass_count,
+        }
+        categories_present = [k for k, v in row_counts.items() if v > 0]
+        if len(categories_present) == 1:
+            category_amounts[categories_present[0]] += t.ticket_amount or Decimal('0')
+        elif categories_present:
+            category_amounts['mixed'] += t.ticket_amount or Decimal('0')
+
         ticket_list.append({
             'ticket_id': t.id,
             'ticket_no': t.ticket_number,
@@ -554,6 +582,7 @@ def apk_tickets(request):
         'trip_no': trip_no,
         'date': date_str,
         'passenger_totals': totals,
+        'category_amounts': {k: str(v) for k, v in category_amounts.items()},
         'tickets': ticket_list,
     })
 
