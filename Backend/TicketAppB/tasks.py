@@ -92,7 +92,13 @@ def _resolve_schedule(palmtec_id, company_id, schedule_no, schedule_start_date,
     return qs.first()
 
 
-def _resolve_trip(palmtec_id, company_id, trip_no, trip_start_date, schedule_no=None):
+def _resolve_trip(palmtec_id, company_id, trip_no, trip_start_date, schedule_no=None,
+                  trip_start_time=None):
+    """
+    Trip identity = palmtec + company + schedule_no + trip_no + start_date + start_time.
+    After a device reset the same schedule_no/trip_no is reused on the same day, so
+    start_time is what separates the old trip from the new one.
+    """
     if not trip_no or not trip_start_date:
         return None
     qs = TripData.objects.filter(
@@ -103,6 +109,8 @@ def _resolve_trip(palmtec_id, company_id, trip_no, trip_start_date, schedule_no=
     )
     if schedule_no is not None:
         qs = qs.filter(schedule_no=schedule_no)
+    if trip_start_time is not None:
+        qs = qs.filter(start_time=trip_start_time)
     return qs.first()
 
 
@@ -162,12 +170,12 @@ def _get_or_create_ghost_trip(palmtec_id, company, route, schedule_obj,
                                bus_no, bus_obj, driver, driver_obj,
                                conductor, conductor_obj, ghost_note):
     """
-    Return the TripData for this (palmtec_id, company, schedule_no, trip_no, start_date).
+    Return the TripData for this (palmtec_id, company, schedule_no, trip_no, start_date, start_time).
     If it doesn't exist yet, create a ghost row (auto_opened=True, is_closed=False)
     with whatever fields the calling event already knows.
     On concurrent-worker IntegrityError, re-fetch.
     """
-    existing = _resolve_trip(palmtec_id, company.id, trip_no, start_date, schedule_no)
+    existing = _resolve_trip(palmtec_id, company.id, trip_no, start_date, schedule_no, start_time)
     if existing:
         return existing
     start_datetime = (
@@ -199,7 +207,7 @@ def _get_or_create_ghost_trip(palmtec_id, company, route, schedule_obj,
                 company_code        = company,
             )
     except IntegrityError:
-        return _resolve_trip(palmtec_id, company.id, trip_no, start_date, schedule_no)
+        return _resolve_trip(palmtec_id, company.id, trip_no, start_date, schedule_no, start_time)
 
 
 def _validate_device(log, palmtec_id_raw, company):
@@ -392,7 +400,7 @@ def process_transaction_data(self, log_id):
             # ── Resolve or ghost-create trip ──────────────────────────────────
             # Ticket carries trip_no + trip_start_date/time, bus, crew — enough
             # to create a ghost TripData if TrpOp hasn't arrived yet.
-            trip_obj = _resolve_trip(str(_p(2)), company.id, trip_no, trip_start_date, schedule_no)
+            trip_obj = _resolve_trip(str(_p(2)), company.id, trip_no, trip_start_date, schedule_no, trip_start_time)
             if not trip_obj and trip_no and trip_start_date:
                 trip_obj = _get_or_create_ghost_trip(
                     palmtec_id          = str(_p(2)),
@@ -578,7 +586,7 @@ def process_trip_open_data(self, log_id):
                 )
 
             # ── TripData upsert ───────────────────────────────────────────────
-            existing = _resolve_trip(_p(2), company.id, trip_no, start_date, schedule_no)
+            existing = _resolve_trip(_p(2), company.id, trip_no, start_date, schedule_no, start_time)
             if existing and existing.auto_opened:
                 # Late open arriving after ghost close — fill in the open fields
                 update_fields = ['open_unique_code', 'bus_no', 'bus_id', 'driver', 'driver_id',
@@ -808,7 +816,7 @@ def process_trip_close_data(self, log_id):
             )
 
             # ── TripData upsert ───────────────────────────────────────────────
-            existing = _resolve_trip(_p(2), company.id, trip_no, start_date, schedule_no)
+            existing = _resolve_trip(_p(2), company.id, trip_no, start_date, schedule_no, start_time)
             if existing:
                 for k, v in close_fields.items():
                     setattr(existing, k, v)
@@ -1222,7 +1230,7 @@ def process_trip_close_summary_data(self, log_id):
             )
 
             # ── Idempotency guard ─────────────────────────────────────────────
-            existing = _resolve_trip(_p(2), company.id, trip_no, start_date, schedule_no)
+            existing = _resolve_trip(_p(2), company.id, trip_no, start_date, schedule_no, start_time)
             if existing and existing.is_closed:
                 log.status = RawDataLog.statusChoices.DUPLICATE
                 log.error_message = "TrpClSum: trip already closed by TrpCl"

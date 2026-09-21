@@ -402,7 +402,7 @@ class TripData(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['palmtec_id', 'company_code', 'schedule_no', 'trip_no', 'start_date'],
+                fields=['palmtec_id', 'company_code', 'schedule_no', 'trip_no', 'start_date', 'start_time'],
                 name='uniq_trip_data'
             )
         ]
