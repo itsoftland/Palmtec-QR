@@ -320,10 +320,10 @@ function TicketDetailModal({ ticket: t, onClose }) {
           )}
 
           {/* Pass info if present */}
-          {(t.pass_id || t.refund_status) && (
+          {(!!t.pass_id || !!t.refund_status) && (
             <FieldGroup title="Other Details" columns={2}>
-              {t.pass_id      && <FieldBlock label="Pass ID"       value={t.pass_id} />}
-              {t.refund_status && <FieldBlock label="Refund Status" value={t.refund_status} />}
+              {!!t.pass_id      && <FieldBlock label="Pass ID"       value={t.pass_id} />}
+              {!!t.refund_status && <FieldBlock label="Refund Status" value={t.refund_status} />}
             </FieldGroup>
           )}
 
