@@ -23,6 +23,14 @@ const fmt = {
 
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 
+// ─── Pax count for Pass-type tickets ───────────────────────────────────────────
+// Pass ticket: pass_number set -> PAX is always 1. pass_number missing -> fall back to pass_id as PAX.
+const getPaxCount = (t) => {
+  const isPass = t.ticket_type_display?.includes('Pass');
+  if (!isPass) return t.total_tickets;
+  return t.pass_number ? 1 : (t.pass_id ?? t.total_tickets);
+};
+
 // ─── Featured "total collection" dark card ────────────────────────────────────
 function FeaturedKpi({ value, sub }) {
   return (
@@ -172,7 +180,7 @@ function TicketRow({ ticket: t, onView, isNew }) {
       {/* Pax count */}
       <td className="px-4 py-3.5 text-center">
         <span className="inline-flex items-center justify-center min-w-[1.75rem] h-7 px-2 rounded-full bg-slate-100 text-slate-700 text-sm font-bold tabular-nums">
-          {t.total_tickets}
+          {getPaxCount(t)}
         </span>
       </td>
 
@@ -275,7 +283,7 @@ function TicketDetailModal({ ticket: t, onClose }) {
             <FieldBlock label="Ticket Time"      value={t.ticket_time} />
             <FieldBlock label="Ticket Type"      value={t.ticket_type_display} />
             <FieldBlock label="Battery %"        value={t.battery_percentage ?? '—'} />
-            <FieldBlock label="Passenger Count"  value={t.passenger_count ?? '—'} />
+            <FieldBlock label="Passenger Count"  value={getPaxCount(t) ?? '—'} />
           </FieldGroup>
 
           {/* Passenger counts */}
@@ -320,9 +328,14 @@ function TicketDetailModal({ ticket: t, onClose }) {
           )}
 
           {/* Pass info if present */}
-          {(!!t.pass_id || !!t.refund_status) && (
-            <FieldGroup title="Other Details" columns={2}>
-              {!!t.pass_id      && <FieldBlock label="Pass ID"       value={t.pass_id} />}
+          {(!!t.pass_id || !!t.pass_number || !!t.refund_status) && (
+            <FieldGroup title="Other Details" columns={3}>
+              {(!!t.pass_id || !!t.pass_number) && (
+                <FieldBlock label="Pass ID" value={t.pass_id || t.pass_number} />
+              )}
+              {!!t.pass_id && !!t.pass_number && (
+                <FieldBlock label="Pass Number" value={t.pass_number} />
+              )}
               {!!t.refund_status && <FieldBlock label="Refund Status" value={t.refund_status} />}
             </FieldGroup>
           )}
