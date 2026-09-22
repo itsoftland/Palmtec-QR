@@ -323,10 +323,10 @@ def register_company_with_license_server(request, pk):
     except Company.DoesNotExist:
         logger.error(f"Company not found with ID: {pk}")
         return Response(
-            {"message": "Company not found"}, 
+            {"message": "Company not found"},
             status=status.HTTP_404_NOT_FOUND
         )
-    
+
     # Check if already registered
     if company.company_id:
         logger.info(f"Company already registered with ID: {company.company_id}")
@@ -395,10 +395,10 @@ def validate_company_license(request, pk):
         except Company.DoesNotExist:
             logger.error(f"Company not found with ID: {pk}")
             return Response(
-                {"message": "Company not found"}, 
+                {"message": "Company not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # Check if company is registered
         if not company.company_id:
             logger.error(f"Company not registered yet. Cannot validate.")
@@ -764,22 +764,28 @@ def create_company(request):
     Create a new company — two paths:
 
     Path A  superadmin / executive → client_type='direct'.
-            No pool involved. Company starts Pending; register + validate via
-            separate endpoints (/register-company-license, /validate-company-license).
+            No pool involved. Company starts Pending; after the DB transaction
+            commits, registers as a new customer with the external license
+            server and queues an async poll (poll_company_license) that fills
+            in the real license-server data (ProductFromDate/ToDate,
+            NumberOfLicence, PalmtecCount, TotalUserCount, PremiumUserCount,
+            IntermediateUserCount, and derived BasicUserCount). Listing UI
+            already polls while authentication_status == 'Validating'. The
+            manual /register-company-license and /validate-company-license
+            endpoints remain available as a retry path if this fails.
 
     Path B  dealer_admin → client_type='dealer_company'.
             Requires { palmtec_count, total_user_count, premium_user_count,
                        intermediate_user_count } in the request body.
             Validates dealer pool (select_for_update to prevent races).
             On success: validates against live dealer pool properties (slots_remaining,
-            users_slots_remaining), grants provisional authentication_status = Approved
-            inheriting dealer product dates, then (after the DB transaction commits)
-            registers the company with the external license server and queues an
-            async poll to overwrite the provisional dates/units with the real
-            license-server data (ProductFromDate/ToDate, NumberOfLicence, PalmtecCount,
-            TotalUserCount, PremiumUserCount, IntermediateUserCount). Listing UI already
-            polls while authentication_status == 'Validating', so this needs no
-            frontend change.
+            users_slots_remaining), sets authentication_status = Approved and the
+            slot counts directly from the dealer's own already-approved license
+            data, inheriting dealer product dates. No separate license-server
+            registration is made for the sub-company — the license server has
+            no concept of a company under a dealer, so such a registration
+            could never be approved externally and would only leave the
+            company stuck oscillating through 'Validating' back to 'Pending'.
     """
     user = request.user
 
@@ -929,14 +935,17 @@ def create_company(request):
             ip_address=request.META.get('REMOTE_ADDR'),
         )
 
-    # ── Register dealer-created company with the license server ────────────────
+    # ── Register with the license server — direct companies only ────────────────
     # Done after the transaction commits: register_with_license_server() is an
     # external HTTP call and must not run while the dealer row lock is held.
-    # Failure here does not undo the company — it keeps the dealer-pool-granted
-    # provisional data and can be retried later; success flips the company to
-    # 'Validating' so the existing poll_company_license task fills in the real
-    # ProductFromDate/ToDate and license units, same as a direct company.
-    if is_dealer_path:
+    # Dealer-created companies are NOT registered as a separate license-server
+    # customer: the license server has no concept of a sub-company under a
+    # dealer, so such a registration would never be approved externally and
+    # poll_company_license would just time out — dealer companies already have
+    # real, license-server-derived data (palmtec_count/total_user_count/etc.,
+    # authentication_status, product dates) inherited straight from the
+    # dealer's own already-approved license, set above in Path B.
+    if not is_dealer_path:
         registration_result = register_with_license_server(company)
         if registration_result['success']:
             company.company_id = registration_result['customer_id']
@@ -946,12 +955,12 @@ def create_company(request):
 
             from ...tasks import poll_company_license
             poll_company_license.delay(company.id)
-            logger.info(f"Queued license-server sync for dealer company '{company.company_name}' (ID: {company.pk}).")
+            logger.info(f"Queued license-server sync for direct company '{company.company_name}' (ID: {company.pk}).")
         else:
             company.error_message = f"License server sync failed: {registration_result['error']}"
             company.save(update_fields=['error_message'])
             logger.warning(
-                f"License server registration failed for dealer company "
+                f"License server registration failed for direct company "
                 f"'{company.company_name}' (ID: {company.pk}): {registration_result['error']}"
             )
 
@@ -1838,14 +1847,20 @@ def sync_company_license_confirm(request, pk):
         return Response({'error': result['error']}, status=status.HTTP_502_BAD_GATEWAY)
 
     auth_data = result['data']
+    is_dealer_company = company.client_type == Company.ClientType.DEALER_COMPANY
 
-    # Re-run consistency check before applying
-    diff = _build_company_sync_diff(company, auth_data)
-    if diff['error']:
-        company.authentication_status = Company.AuthStatus.PENDING
-        company.error_message = diff['error']
-        company.save(update_fields=['authentication_status', 'error_message'])
-        return Response({'error': diff['error']}, status=status.HTTP_400_BAD_REQUEST)
+    # Dealer-created companies keep their slot counts from the dealer's pool
+    # (set at creation / adjusted via the pool-allocation endpoint) — the
+    # count-consistency check below only applies to the counts this endpoint
+    # is about to write, so it's skipped here along with the counts themselves.
+    if not is_dealer_company:
+        # Re-run consistency check before applying
+        diff = _build_company_sync_diff(company, auth_data)
+        if diff['error']:
+            company.authentication_status = Company.AuthStatus.PENDING
+            company.error_message = diff['error']
+            company.save(update_fields=['authentication_status', 'error_message'])
+            return Response({'error': diff['error']}, status=status.HTTP_400_BAD_REQUEST)
 
     def _si(val):
         try:
@@ -1866,24 +1881,26 @@ def sync_company_license_confirm(request, pk):
         company.authentication_status,
     )
 
-    new_total   = _si(auth_data.get('TotalUserCount'))
-    new_premium = _si(auth_data.get('PremiumUserCount'))
-    new_inter   = _si(auth_data.get('IntermediateUserCount'))
-    new_basic   = extract_basic_user_count(auth_data, new_total, new_premium, new_inter)
+    if not is_dealer_company:
+        new_total   = _si(auth_data.get('TotalUserCount'))
+        new_premium = _si(auth_data.get('PremiumUserCount'))
+        new_inter   = _si(auth_data.get('IntermediateUserCount'))
+        new_basic   = extract_basic_user_count(auth_data, new_total, new_premium, new_inter)
 
-    ok, errs = _check_user_count_reduction(company, new_total, new_premium, new_inter)
-    if not ok:
-        return Response({
-            'error': 'Cannot apply sync: would reduce user counts below current assignments.',
-            'details': errs,
-        }, status=status.HTTP_400_BAD_REQUEST)
+        ok, errs = _check_user_count_reduction(company, new_total, new_premium, new_inter)
+        if not ok:
+            return Response({
+                'error': 'Cannot apply sync: would reduce user counts below current assignments.',
+                'details': errs,
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-    company.number_of_licences      = _si(auth_data.get('NumberOfLicence'))
-    company.palmtec_count           = _si(auth_data.get('PalmtecCount'))
-    company.total_user_count        = new_total
-    company.premium_user_count      = new_premium
-    company.intermediate_user_count = new_inter
-    company.basic_user_count        = new_basic
+        company.number_of_licences      = _si(auth_data.get('NumberOfLicence'))
+        company.palmtec_count           = _si(auth_data.get('PalmtecCount'))
+        company.total_user_count        = new_total
+        company.premium_user_count      = new_premium
+        company.intermediate_user_count = new_inter
+        company.basic_user_count        = new_basic
+
     company.product_from_date = _parse_license_date(raw_from) or company.product_from_date
     company.product_to_date   = _parse_license_date(raw_to)   or company.product_to_date
     company.authentication_status   = new_auth_status

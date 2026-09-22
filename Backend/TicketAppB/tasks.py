@@ -1593,6 +1593,11 @@ def poll_company_license(self, company_id: int) -> None:
         log.error(f'[poll_company_license] Company {company_id} not found — aborting')
         return
 
+    # Dealer-created companies keep their slot counts from the dealer's pool —
+    # everything else (status, dates, registration id, unique identifier) is
+    # still synced below, just the five count fields are skipped.
+    is_dealer_company = company.client_type == Company.ClientType.DEALER_COMPANY
+
     try:
         auth_result = poll_license_authentication(company.company_id)
 
@@ -1630,7 +1635,9 @@ def poll_company_license(self, company_id: int) -> None:
                 auth_data, total_user_count, premium_user_count, intermediate_user_count
             )
 
-            if number_of_licences > 0 and (palmtec_count + total_user_count) > number_of_licences:
+            # Consistency check only applies to the counts we're about to
+            # write — skip it for dealer companies, whose counts stay as-is.
+            if not is_dealer_company and number_of_licences > 0 and (palmtec_count + total_user_count) > number_of_licences:
                 log.error(
                     f'[poll_company_license] License config error for {company.company_name}: '
                     f'palmtec({palmtec_count}) + users({total_user_count}) > '
@@ -1650,13 +1657,14 @@ def poll_company_license(self, company_id: int) -> None:
             company.unique_identifier        = auth_data.get('UniqueIDentifier')
             company.product_from_date        = _parse_license_date(auth_data.get('ProductFromDate'))
             company.product_to_date          = _parse_license_date(auth_data.get('ProductToDate'))
-            company.number_of_licences       = number_of_licences
-            company.palmtec_count            = palmtec_count
-            company.total_user_count         = total_user_count
-            company.premium_user_count       = premium_user_count
-            company.intermediate_user_count  = intermediate_user_count
-            company.basic_user_count         = basic_user_count
             company.error_message            = None
+            if not is_dealer_company:
+                company.number_of_licences       = number_of_licences
+                company.palmtec_count            = palmtec_count
+                company.total_user_count         = total_user_count
+                company.premium_user_count       = premium_user_count
+                company.intermediate_user_count  = intermediate_user_count
+                company.basic_user_count         = basic_user_count
 
         company.save()
         log.info(f'[poll_company_license] Updated company {company_id} → {company.authentication_status}')
