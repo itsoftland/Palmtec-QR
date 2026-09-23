@@ -19,6 +19,12 @@ export default function PalmtecDevicesPage() {
   const [syncError, setSyncError] = useState(null);
   const mountedRef = useRef(true);
 
+  const [basicUsers, setBasicUsers] = useState([]);
+  const [assignModal, setAssignModal] = useState(null);
+  const [assignUserId, setAssignUserId] = useState('');
+  const [assignError, setAssignError] = useState('');
+  const [assignBusy, setAssignBusy] = useState(false);
+
   const fetchDevices = useCallback(async () => {
     setLoading(true);
     try {
@@ -31,11 +37,22 @@ export default function PalmtecDevicesPage() {
     }
   }, []);
 
+  const fetchBasicUsers = useCallback(async () => {
+    try {
+      const res = await api.get(`${BASE_URL}/get_users`);
+      const all = res.data?.data ?? [];
+      setBasicUsers(all.filter(u => u.role === 'company_user' && u.tier === 'basic'));
+    } catch {
+      setBasicUsers([]);
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
     fetchDevices();
+    fetchBasicUsers();
     return () => { mountedRef.current = false; };
-  }, [fetchDevices]);
+  }, [fetchDevices, fetchBasicUsers]);
 
   const openModal = (device) => {
     setPalmtecModal({ device });
@@ -59,6 +76,45 @@ export default function PalmtecDevicesPage() {
       setPalmtecError(err?.response?.data?.error || 'Failed to set Palmtec ID.');
     } finally {
       setPalmtecBusy(false);
+    }
+  };
+
+  const openAssignModal = (device) => {
+    const current = basicUsers.find(u => u.allocated_device === device.id);
+    setAssignModal({ device, currentUser: current || null });
+    setAssignUserId(current ? String(current.id) : '');
+    setAssignError('');
+  };
+
+  const handleAssignSave = async () => {
+    if (!assignUserId) {
+      setAssignError('Please select a user.');
+      return;
+    }
+    setAssignBusy(true);
+    setAssignError('');
+    try {
+      await api.post(`${BASE_URL}/etm-devices/${assignModal.device.id}/assign-user`, { user_id: assignUserId });
+      setAssignModal(null);
+      fetchBasicUsers();
+    } catch (err) {
+      setAssignError(err?.response?.data?.error || 'Failed to assign device.');
+    } finally {
+      setAssignBusy(false);
+    }
+  };
+
+  const handleUnassign = async () => {
+    setAssignBusy(true);
+    setAssignError('');
+    try {
+      await api.post(`${BASE_URL}/etm-devices/${assignModal.device.id}/unassign-user`);
+      setAssignModal(null);
+      fetchBasicUsers();
+    } catch (err) {
+      setAssignError(err?.response?.data?.error || 'Failed to unassign device.');
+    } finally {
+      setAssignBusy(false);
     }
   };
 
@@ -151,14 +207,15 @@ export default function PalmtecDevicesPage() {
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Serial Number</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Palmtec ID</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Payment Aggregator TID</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Assigned User</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeleton columns={['w-40', 'w-28', 'w-28']} />
+              <TableSkeleton columns={['w-40', 'w-28', 'w-28', 'w-28']} />
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
                   No devices found.
                 </td>
               </tr>
@@ -195,6 +252,29 @@ export default function PalmtecDevicesPage() {
                       Not set
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  {(() => {
+                    const assignedUser = basicUsers.find(u => u.allocated_device === device.id);
+                    return assignedUser ? (
+                      <button
+                        onClick={() => openAssignModal(device)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors"
+                      >
+                        <span>{assignedUser.username}</span>
+                        <EditIcon />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => openAssignModal(device)}
+                        disabled={device.allocation_status !== 'Allocated'}
+                        title={device.allocation_status !== 'Allocated' ? 'Device must be allocated to your company first' : ''}
+                        className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-50"
+                      >
+                        Assign
+                      </button>
+                    );
+                  })()}
                 </td>
               </tr>
             ))}
@@ -274,6 +354,67 @@ export default function PalmtecDevicesPage() {
               className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors disabled:opacity-50"
             >
               {palmtecBusy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Assign User Modal */}
+      <Modal isOpen={!!assignModal} onClose={() => setAssignModal(null)} title="Assign Device to User" narrow>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400 font-mono -mt-2">
+            {assignModal?.device?.serial_number}
+          </p>
+
+          {assignError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {assignError}
+            </p>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Basic Tier User *</label>
+            {basicUsers.length === 0 ? (
+              <p className="text-xs text-slate-400">No basic tier users found.</p>
+            ) : (
+              <select
+                value={assignUserId}
+                onChange={e => setAssignUserId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                autoFocus
+              >
+                <option value="">Select a user…</option>
+                {basicUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.username}{u.allocated_device_serial ? ` (currently: ${u.allocated_device_serial})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            {assignModal?.currentUser && (
+              <button
+                onClick={handleUnassign}
+                disabled={assignBusy}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 mr-auto"
+              >
+                Unassign
+              </button>
+            )}
+            <button
+              onClick={() => setAssignModal(null)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAssignSave}
+              disabled={assignBusy || basicUsers.length === 0}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors disabled:opacity-50"
+            >
+              {assignBusy ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>

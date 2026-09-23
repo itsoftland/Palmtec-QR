@@ -110,6 +110,14 @@ class CustomUser(AbstractUser):
         related_name='users',
     )
 
+    allocated_device = models.ForeignKey(
+        'ETMDevice',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='allocated_users',
+    )
+
     # ── Audit ─────────────────────────────────────────────────────────────────
     # Self-referential: who created this user. Nullable so superadmin (root)
     # and script-created users have no creator. SET_NULL because users are

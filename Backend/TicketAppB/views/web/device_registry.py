@@ -11,6 +11,8 @@ Dealer assigns from their pool to a client company (Allocated).
   POST  /etm-devices/bulk-assign-dealer  — Assign serial numbers to dealer pool (superadmin)
   POST  /etm-devices/bulk-assign-company — Assign serial numbers directly to company (superadmin)
   POST  /etm-devices/<id>/allocate       — Dealer allocates one pool device to a client company
+  POST  /etm-devices/<id>/assign-user    — Company admin assigns device to a company_user
+  POST  /etm-devices/<id>/unassign-user  — Company admin clears a device's user assignment
   POST  /etm-devices/<id>/deactivate     — Suspend device (sets is_active=False)
   POST  /etm-devices/<id>/reactivate    — Re-enable a suspended device
   DELETE /etm-devices/<id>/delete        — Permanently delete a Stock device (superadmin)
@@ -30,8 +32,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import ETMDevice, Company, Dealer, AuditLog, UserRole, SettingsProfile
+from ...models import ETMDevice, Company, Dealer, CustomUser, AuditLog, UserRole, UserTier, SettingsProfile
 from ...serializers.devices import ETMDeviceSerializer
+from ...serializers.auth import UserSerializer
 from ...permissions import LicensePermission
 from ..utils import (
     _is_superadmin,
@@ -814,6 +817,108 @@ def set_aggregator_tid(request, device_id):
     return Response({
         'message': f'Payment Aggregator TID {tid} assigned to device {device.serial_number}.',
         'data': ETMDeviceSerializer(device).data,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def assign_device_to_user(request, device_id):
+    """
+    Company admin assigns an allocated device to one of their company_user accounts.
+
+    Body: { user_id: <int> }
+    Company admin only — both device and target user must belong to their company.
+    If the device is already assigned to a different user, that user is
+    unassigned first (a device can only be held by one user at a time).
+    """
+    user = request.user
+    if not _is_company_admin(user):
+        return Response({'error': 'Company admin only'}, status=status.HTTP_403_FORBIDDEN)
+    if not user.company_id:
+        return Response({'error': 'No company linked to your account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        device = ETMDevice.objects.get(
+            pk=device_id,
+            company_id=user.company_id,
+            allocation_status=ETMDevice.AllocationStatus.ALLOCATED,
+            is_active=True,
+        )
+    except ETMDevice.DoesNotExist:
+        return Response({'error': 'Device not found in your company'}, status=status.HTTP_404_NOT_FOUND)
+
+    target_user_id = request.data.get('user_id')
+    if not target_user_id:
+        return Response({'error': 'user_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        target_user = CustomUser.objects.get(
+            pk=target_user_id,
+            company_id=user.company_id,
+            role=UserRole.COMPANY_USER,
+        )
+    except CustomUser.DoesNotExist:
+        return Response({'error': 'User not found in your company'}, status=status.HTTP_404_NOT_FOUND)
+
+    if target_user.tier != UserTier.BASIC:
+        return Response({'error': 'Device assignment is only for Basic tier users'}, status=status.HTTP_400_BAD_REQUEST)
+
+    device.allocated_users.exclude(pk=target_user.pk).update(allocated_device=None)
+
+    target_user.allocated_device = device
+    target_user.save(update_fields=['allocated_device'])
+
+    log_action(
+        actor=user, action=AuditLog.ActionType.DEVICE_ALLOCATE,
+        target_model='CustomUser', target_id=target_user.pk,
+        target_display=target_user.username,
+        details={'device_id': device.pk, 'serial_number': device.serial_number},
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'message': f'Device {device.serial_number} assigned to {target_user.username}.',
+        'data': UserSerializer(target_user).data,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def unassign_device_from_user(request, device_id):
+    """
+    Company admin clears a device's current user assignment.
+
+    Company admin only — device must belong to their company.
+    """
+    user = request.user
+    if not _is_company_admin(user):
+        return Response({'error': 'Company admin only'}, status=status.HTTP_403_FORBIDDEN)
+    if not user.company_id:
+        return Response({'error': 'No company linked to your account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        device = ETMDevice.objects.get(pk=device_id, company_id=user.company_id)
+    except ETMDevice.DoesNotExist:
+        return Response({'error': 'Device not found in your company'}, status=status.HTTP_404_NOT_FOUND)
+
+    target_user = CustomUser.objects.filter(allocated_device=device, company_id=user.company_id).first()
+    if not target_user:
+        return Response({'error': 'Device is not assigned to any user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    target_user.allocated_device = None
+    target_user.save(update_fields=['allocated_device'])
+
+    log_action(
+        actor=user, action=AuditLog.ActionType.DEVICE_DEALLOCATE,
+        target_model='CustomUser', target_id=target_user.pk,
+        target_display=target_user.username,
+        details={'device_id': device.pk, 'serial_number': device.serial_number},
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'message': f'Device {device.serial_number} unassigned from {target_user.username}.',
+        'data': UserSerializer(target_user).data,
     }, status=status.HTTP_200_OK)
 
 

@@ -7,6 +7,7 @@ class UserSerializer(serializers.ModelSerializer):
     tier_display = serializers.CharField(source='get_tier_display', read_only=True)
     company_name = serializers.CharField(source='company.company_name', read_only=True)
     dealer_name  = serializers.CharField(source='dealer.dealer_name',  read_only=True)
+    allocated_device_serial = serializers.CharField(source='allocated_device.serial_number', read_only=True)
 
     class Meta:
         model  = CustomUser
@@ -25,6 +26,8 @@ class UserSerializer(serializers.ModelSerializer):
             'company_name',
             'dealer',
             'dealer_name',
+            'allocated_device',
+            'allocated_device_serial',
             'is_active',
             'is_verified',
             'created_by',
@@ -37,6 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
             'tier_display',
             'company_name',
             'dealer_name',
+            'allocated_device_serial',
             'date_joined',
             'last_login',
         ]

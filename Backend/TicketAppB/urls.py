@@ -222,6 +222,8 @@ urlpatterns = [
     path('etm-devices/<int:device_id>/return-to-stock', device_registry_views.return_device_to_stock, name='etm_return_stock'),
     path('etm-devices/<int:device_id>/set-palmtec-id',   device_registry_views.set_palmtec_id,   name='etm_set_palmtec_id'),
     path('etm-devices/<int:device_id>/set-aggregator-tid', device_registry_views.set_aggregator_tid,  name='etm_set_aggregator_tid'),
+    path('etm-devices/<int:device_id>/assign-user',    device_registry_views.assign_device_to_user, name='etm_assign_user'),
+    path('etm-devices/<int:device_id>/unassign-user',  device_registry_views.unassign_device_from_user, name='etm_unassign_user'),
     path('etm-devices/sync-aggregator-tids',               device_registry_views.sync_aggregator_tids, name='etm_sync_aggregator_tids'),
     path('etm-devices/<int:device_id>/delete',          device_registry_views.delete_device,        name='etm_delete'),
 
