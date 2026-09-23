@@ -525,12 +525,11 @@ def apk_tickets(request):
         )
 
     totals = {'full': 0, 'half': 0, 'st': 0, 'phy': 0, 'lugg': 0, 'ladies': 0, 'senior': 0, 'pass': 0}
-    # category-wise ticket amount — ticket_amount is per-row, not per-category, so
-    # it's only attributable to a single category when that row has exactly one
-    # non-zero category count; rows mixing categories fall into 'mixed'.
+    # category-wise ticket amount — ticket_amount is per-row, not per-category.
+    # lugg_amount is a real separate column so it's carved out first; whatever's
+    # left is split across the remaining categories on that row, weighted by count.
     category_amounts = {'full': Decimal('0'), 'half': Decimal('0'), 'st': Decimal('0'), 'phy': Decimal('0'),
-                         'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0'),
-                         'mixed': Decimal('0')}
+                         'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0')}
     ticket_list = []
     for t in qs:
         # TransactionData has no pass_count column — pass_number presence marks a pass ticket.
@@ -556,10 +555,26 @@ def apk_tickets(request):
             'pass': pass_count,
         }
         categories_present = [k for k, v in row_counts.items() if v > 0]
-        if len(categories_present) == 1:
-            category_amounts[categories_present[0]] += t.ticket_amount or Decimal('0')
-        elif categories_present:
-            category_amounts['mixed'] += t.ticket_amount or Decimal('0')
+
+        lugg_amt = t.lugg_amount or Decimal('0')
+        remaining_amt = t.ticket_amount or Decimal('0')
+        remaining_categories = categories_present
+        if 'lugg' in categories_present:
+            category_amounts['lugg'] += lugg_amt
+            remaining_amt -= lugg_amt
+            remaining_categories = [c for c in categories_present if c != 'lugg']
+
+        if len(remaining_categories) == 1:
+            category_amounts[remaining_categories[0]] += remaining_amt
+        elif remaining_categories:
+            weight_total = sum(row_counts[c] for c in remaining_categories)
+            share_sum = Decimal('0')
+            for c in remaining_categories[:-1]:
+                share = (remaining_amt * row_counts[c] / weight_total).quantize(Decimal('0.01'))
+                category_amounts[c] += share
+                share_sum += share
+            # last category takes the remainder so shares always sum exactly to remaining_amt
+            category_amounts[remaining_categories[-1]] += remaining_amt - share_sum
 
         ticket_list.append({
             'ticket_id': t.id,
