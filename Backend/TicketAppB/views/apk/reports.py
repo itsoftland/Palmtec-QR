@@ -416,6 +416,7 @@ def apk_trips(request):
         cash_amt = revenue - upi_amt
         trip_list.append({
             'trip_no': t.trip_no,
+            'palmtec_id': t.palmtec_id,
             'status': 'open' if not t.is_closed else 'closed',
             'route_name': t.route_id.route_name if t.route_id else None,
             'route_code': t.route_id.route_code if t.route_id else None,
@@ -446,6 +447,7 @@ def apk_tickets(request):
     schedule_no = request.GET.get('schedule_no')
     trip_no = request.GET.get('trip_no')
     date_str = request.GET.get('date')
+    p_id = request.GET.get('p_id')
 
     # type of data required(full or partial)
     required_data_type = request.GET.get('data_type', None)
@@ -473,6 +475,7 @@ def apk_tickets(request):
             trip_no=int(trip_no),
             start_date=date_str,
             schedule_id__start_date=date_str,
+            palmtec_id=p_id,
         )
     except TripData.DoesNotExist:
         return Response({'error': 'Trip not found'}, status=404)
@@ -614,6 +617,7 @@ def apk_passengers(request):
     schedule_no = request.GET.get('schedule_no')
     trip_no = request.GET.get('trip_no')
     date_str = request.GET.get('date')
+    p_id = request.GET.get('p_id')
 
     if not bus_no or not schedule_no or not trip_no or not date_str:
         return Response({'error': 'bus_no, schedule_no, trip_no and date are required'}, status=400)
@@ -636,6 +640,7 @@ def apk_passengers(request):
             trip_no=int(trip_no),
             start_date=date_str,
             schedule_id__start_date=date_str,
+            palmtec_id=p_id,
         )
     except TripData.DoesNotExist:
         return Response({'error': 'Trip not found'}, status=404)
@@ -695,16 +700,18 @@ def apk_passengers(request):
     passenger_totals = {k: v or 0 for k, v in agg.items()}
 
     # ── Stage table: keyed by RouteStage PK (from_stage_id_id / to_stage_id_id) ──
-    empty = {'f': 0, 'h': 0, 'st': 0, 'ph': 0}
+    empty = {'f': 0, 'h': 0, 'st': 0, 'ph': 0, 'lugg': 0, 'sr': 0, 'ld': 0}
 
     boarded = {
         r['from_stage_id_id']: {
             'f': r['full'] or 0, 'h': r['half'] or 0,
             'st': r['st'] or 0, 'ph': r['phy'] or 0,
+            'lugg': r['lugg'] or 0, 'sr': r['senior'] or 0, 'ld': r['ladies'] or 0,
         }
         for r in qs.values('from_stage_id_id').annotate(
             full=Sum('full_count'), half=Sum('half_count'),
             st=Sum('st_count'), phy=Sum('phy_count'),
+            lugg=Sum('lugg_count'), senior=Sum('senior_count'), ladies=Sum('ladies_count'),
         )
         if r['from_stage_id_id'] is not None
     }
@@ -713,10 +720,12 @@ def apk_passengers(request):
         r['to_stage_id_id']: {
             'f': r['full'] or 0, 'h': r['half'] or 0,
             'st': r['st'] or 0, 'ph': r['phy'] or 0,
+            'lugg': r['lugg'] or 0, 'sr': r['senior'] or 0, 'ld': r['ladies'] or 0,
         }
         for r in qs.values('to_stage_id_id').annotate(
             full=Sum('full_count'), half=Sum('half_count'),
             st=Sum('st_count'), phy=Sum('phy_count'),
+            lugg=Sum('lugg_count'), senior=Sum('senior_count'), ladies=Sum('ladies_count'),
         )
         if r['to_stage_id_id'] is not None
     }
