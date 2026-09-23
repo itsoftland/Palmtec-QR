@@ -829,3 +829,9 @@ def getExpenseDataFromDevice(request):
     except Exception as e:
         log_expense.exception("ExpenseData failed raw=%s err=%s", raw, e, extra={'company_id': company_instance.company_id} if company_instance else {})
         return HttpResponse("ERROR", status=500, content_type="text/plain")
+
+
+@csrf_exempt
+def get_inspector_report_from_device(request):
+
+    return HttpResponse("NANNI", content_type="text/plain", status=200)

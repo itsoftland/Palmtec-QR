@@ -94,6 +94,8 @@ urlpatterns = [
     path('getOdometerDetails', palmtec_ingest.getOdometerDataFromDevice, name='get_odometer_data'),
     path('getExpenseDetails', palmtec_ingest.getExpenseDataFromDevice, name='get_expense_data'),
 
+    path('getInspectorReport', palmtec_ingest.get_inspector_report_from_device, name="get_inspestor_report"),
+
     # failed payload management (superadmin only)
     path('failed-payloads',                   raw_log_views.get_failed_payloads,   name='get_failed_payloads'),
     path('failed-payloads/<int:log_id>/retry', raw_log_views.retry_failed_payload, name='retry_failed_payload'),
