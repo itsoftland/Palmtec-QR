@@ -94,6 +94,7 @@ urlpatterns = [
     path('getOdometerDetails', palmtec_ingest.getOdometerDataFromDevice, name='get_odometer_data'),
     path('getExpenseDetails', palmtec_ingest.getExpenseDataFromDevice, name='get_expense_data'),
 
+    # new api not completed
     path('getInspectorReport', palmtec_ingest.get_inspector_report_from_device, name="get_inspestor_report"),
 
     # failed payload management (superadmin only)

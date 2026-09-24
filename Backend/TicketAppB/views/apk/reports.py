@@ -535,8 +535,8 @@ def apk_tickets(request):
                          'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0')}
     ticket_list = []
     for t in qs:
-        # TransactionData has no pass_count column — pass_number presence marks a pass ticket.
-        pass_count = 1 if t.pass_number else 0
+        # TransactionData has no pass_count column — pass_number presence or ticket_type 32 marks a pass ticket.
+        pass_count = 1 if (t.pass_number or t.ticket_type == 32) else 0
 
         totals['full'] += t.full_count or 0
         totals['half'] += t.half_count or 0
