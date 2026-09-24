@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import datetime
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -10,7 +11,7 @@ from django.db import OperationalError
 from django.utils.dateparse import parse_datetime
 import pytz
 
-from ...models import TransactionData, TripData, ScheduleData
+from ...models import TransactionData, TripData, ScheduleData, OdometerData
 from ...permissions import LicensePermission
 from ...serializers.transactions import TicketDataSerializer,TripDataSerializer,ScheduleDataSerializer
 
@@ -213,6 +214,25 @@ def get_all_schedule_data(request):
         objects = list(qs)
         for obj in objects:
             obj._trips_count = obj._trips_count  # annotation already on obj
+
+        # Bulk-fetch odometer readings once and attach total_run_km per schedule
+        if objects:
+            odo_rows = OdometerData.objects.filter(
+                company_code=user.company,
+                palmtec_id__in={o.palmtec_id for o in objects},
+                schedule_no__in={o.schedule_no for o in objects},
+                start_date__in={o.start_date for o in objects if o.start_date},
+            ).values_list('palmtec_id', 'schedule_no', 'start_date', 'bus_no',
+                          'start_time', 'start_reading', 'end_reading')
+            readings_by_key = defaultdict(list)
+            for pid, sno, sdate, bus, stime, start_r, end_r in odo_rows:
+                key = ScheduleDataSerializer.odometer_key(pid, sno, sdate, bus)
+                readings_by_key[key].append((stime, start_r, end_r))
+            for obj in objects:
+                key = ScheduleDataSerializer.odometer_key(
+                    obj.palmtec_id, obj.schedule_no, obj.start_date, obj.bus_no)
+                obj._total_run_km = ScheduleDataSerializer.run_km_for_time(
+                    readings_by_key.get(key, []), obj.start_time)
 
         serializer = ScheduleDataSerializer(objects, many=True)
         return JsonResponse({

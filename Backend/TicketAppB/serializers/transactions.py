@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from ..models import TransactionData, TripData, ScheduleData, ExpenseData
+from ..models import TransactionData, TripData, ScheduleData, ExpenseData, OdometerData
 
 
 class TicketDataSerializer(serializers.ModelSerializer):
@@ -221,6 +221,7 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
     battery_end   = serializers.SerializerMethodField()
     trips_count   = serializers.SerializerMethodField()
     company_name  = serializers.SerializerMethodField()
+    total_run_km  = serializers.SerializerMethodField()
 
     class Meta:
         model = ScheduleData
@@ -245,6 +246,7 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
             'battery_start',
             'battery_end',
             'trips_count',
+            'total_run_km',
             'total_tickets',
             'total_collection',
             'upi_total_collection',
@@ -312,6 +314,50 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
 
     def get_company_name(self, obj):
         return obj.company_code.company_name if obj.company_code else None
+
+    @staticmethod
+    def odometer_key(palmtec_id, schedule_no, start_date, bus_no):
+        return (palmtec_id, schedule_no, start_date, bus_no or '')
+
+    # Odometer start_time is stored at minute precision while schedule start_time
+    # has seconds, and the same schedule_no can repeat within a day.
+    ODOMETER_TIME_TOLERANCE_SECONDS = 120
+
+    @classmethod
+    def run_km_for_time(cls, candidates, start_time):
+        """
+        candidates: iterable of (start_time, start_reading, end_reading) odometer rows.
+        Picks the row whose start_time is closest to the schedule start_time (within
+        tolerance) and returns end_reading - start_reading. 0.0 if no usable match.
+        """
+        if start_time is None:
+            return 0.0
+        target = start_time.hour * 3600 + start_time.minute * 60 + start_time.second
+        best, best_diff = None, None
+        for odo_time, start_r, end_r in candidates:
+            if odo_time is None:
+                continue
+            diff = abs(odo_time.hour * 3600 + odo_time.minute * 60 + odo_time.second - target)
+            if diff <= cls.ODOMETER_TIME_TOLERANCE_SECONDS and (best_diff is None or diff < best_diff):
+                best, best_diff = (start_r, end_r), diff
+        if not best:
+            return 0.0
+        start_r, end_r = best
+        if start_r is None or end_r is None or end_r < start_r:
+            return 0.0
+        return float(round(end_r - start_r, 2))
+
+    def get_total_run_km(self, obj):
+        # View may pre-attach _total_run_km (bulk lookup) to avoid a query per schedule
+        if hasattr(obj, '_total_run_km'):
+            return obj._total_run_km
+        candidates = OdometerData.objects.filter(
+            palmtec_id=obj.palmtec_id,
+            schedule_no=obj.schedule_no,
+            start_date=obj.start_date,
+            bus_no=obj.bus_no,
+        ).values_list('start_time', 'start_reading', 'end_reading')
+        return self.run_km_for_time(candidates, obj.start_time)
 
 
 class ExpenseDataSerializer(serializers.ModelSerializer):

@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { KpiCard } from '@/components/ui/kpi-card';
 import {
   CalendarCog, Activity, CheckCircle2, Route, Ticket, IndianRupee,
-  Download, RefreshCw, AlertCircle, Eye, Bus, IdCard, Battery,
+  Download, RefreshCw, AlertCircle, Eye, Bus, IdCard, Battery, Gauge,
 } from 'lucide-react';
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ const fmt = {
     if (v >= 1000)   return `₹${(v / 1000).toFixed(1)}K`;
     return `₹${v.toFixed(0)}`;
   },
+  km: (n) => `${(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })} km`,
 };
 
 const getTodayDate = () => new Date().toISOString().split('T')[0];
@@ -206,6 +207,7 @@ function ScheduleRow({ schedule: s, onView, isNew }) {
         {/* Mini stats */}
         <div className="col-span-3 flex justify-around items-center border-x border-slate-100">
           <MiniStat label="Trips"   value={s.trips_count} />
+          <MiniStat label="KM"      value={fmt.km(s.total_run_km)} color="text-violet-700" />
           <MiniStat label="Tickets" value={s.total_tickets} />
           <MiniStat label="UPI"     value={fmt.inrK(s.upi_total_collection)} color="text-blue-700" />
         </div>
@@ -307,7 +309,7 @@ function ScheduleDetailModal({ schedule: s, onClose }) {
                     : fmt.duration(s.start_datetime, s.end_datetime)}
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  {s.trips_count ?? 0} trips · {s.total_tickets ?? 0} tickets
+                  {s.trips_count ?? 0} trips · {fmt.km(s.total_run_km)} · {s.total_tickets ?? 0} tickets
                 </p>
               </div>
               <div className="text-right">
@@ -345,9 +347,10 @@ function ScheduleDetailModal({ schedule: s, onClose }) {
           )}
 
           {/* Vehicle & Crew */}
-          <FieldGroup title="Vehicle & Crew" columns={2}>
+          <FieldGroup title="Vehicle & Crew" columns={3}>
             <FieldBlock label="Palmtec Device" value={s.palmtec_id} />
             <FieldBlock label="Bus No"         value={s.bus_no} />
+            <FieldBlock label="Total Run KM"   value={fmt.km(s.total_run_km)} />
             <FieldBlock label="Driver"         value={s.driver} />
             <FieldBlock label="Conductor"      value={s.conductor} />
           </FieldGroup>
@@ -584,6 +587,7 @@ export default function ScheduleDataPage() {
     open:       filteredData.filter(s => s.status === 'open').length,
     closed:     filteredData.filter(s => s.status === 'closed').length,
     trips:      filteredData.reduce((a, s) => a + (s.trips_count || 0), 0),
+    km:         filteredData.reduce((a, s) => a + Number(s.total_run_km || 0), 0),
     tickets:    filteredData.reduce((a, s) => a + (s.total_tickets || 0), 0),
     collection: filteredData.reduce((a, s) => a + Number(s.total_collection || 0), 0),
   };
@@ -644,6 +648,7 @@ export default function ScheduleDataPage() {
       { header: 'Battery Start',      key: 'battery_start',         width: 14 },
       { header: 'Battery End',        key: 'battery_end',           width: 14 },
       { header: 'Trips Count',        key: 'trips_count',           width: 14 },
+      { header: 'Total Run KM',       key: 'total_run_km',          width: 14 },
       { header: 'Total Tickets',      key: 'total_tickets',         width: 14 },
       { header: 'UPI Collection',     key: 'upi_total_collection',  width: 16 },
       { header: 'Total Collection',   key: 'total_collection',      width: 16 },
@@ -750,11 +755,12 @@ export default function ScheduleDataPage() {
       )}
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
         <KpiCard title="Total Schedules" value={isRefreshing ? '...' : String(summary.total)}      icon={CalendarCog}  color="#475569" loading={isRefreshing} />
         <KpiCard title="Active Now"      value={isRefreshing ? '...' : String(summary.open)}       icon={Activity}     color="#f59e0b" subtitle="devices online" loading={isRefreshing} />
         <KpiCard title="Closed Today"    value={isRefreshing ? '...' : String(summary.closed)}     icon={CheckCircle2} color="#10b981" loading={isRefreshing} />
         <KpiCard title="Trips Run"       value={isRefreshing ? '...' : String(summary.trips)}      icon={Route}        color="#8b5cf6" loading={isRefreshing} />
+        <KpiCard title="Total KM"        value={isRefreshing ? '...' : fmt.km(summary.km)}         icon={Gauge}        color="#7c3aed" loading={isRefreshing} />
         <KpiCard title="Tickets Issued"  value={isRefreshing ? '...' : String(summary.tickets)}    icon={Ticket}       color="#6366f1" loading={isRefreshing} />
         <KpiCard title="Total Collection" value={isRefreshing ? '...' : fmt.inrK(summary.collection)} icon={IndianRupee} color="#059669" loading={isRefreshing} />
       </div>
