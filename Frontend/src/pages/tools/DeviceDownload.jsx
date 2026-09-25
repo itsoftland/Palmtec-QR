@@ -548,7 +548,7 @@ export default function DeviceDownload() {
     // present in the folder selected by the operator.
     const tasks = [];
     if (!toolAlreadyExists) {
-      tasks.push({ label: 'Palmtech Transfer Tool', endpoint: '/device/palmtech-tool', filename: 'PalmtechDataTransfer.zip', unzip: true, timeout: 120000 });
+      tasks.push({ label: 'Palmtech Transfer Tool', endpoint: '/device/palmtech-tool', filename: 'PalmtechDataTransfer.zip', unzip: true, timeout: 300000 });
     }
     if (selected.settings)  tasks.push({ label: 'Settings (BUS.DAT)',         endpoint: `/device/settings?serialnumber=${encodeURIComponent(selectedDevice)}`, filename: 'BUS.DAT'          });
     if (selected.crew)      tasks.push({ label: 'Driver Schedule (CREW.DAT)', endpoint: '/device/crew',                   filename: 'CREW.DAT'         });
@@ -604,7 +604,13 @@ export default function DeviceDownload() {
     setDownloading(false);
     setProgress([]);
     setDone(true);
-    setShowTransferModal(true);
+    // Fresh tool download: show the modal so the operator sees the protocol
+    // registration hint. Tool already present: launch the transfer directly.
+    if (toolAlreadyExists) {
+      window.location.assign('palmtec://launch');
+    } else {
+      setShowTransferModal(true);
+    }
   };
 
   const allOn = Object.values(selected).every(Boolean);

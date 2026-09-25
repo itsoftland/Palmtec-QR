@@ -715,18 +715,31 @@ def get_palmtech_tool_zip(request):
     if not tool_dir.is_dir():
         return HttpResponse('TOOL_NOT_FOUND', status=404)
 
+    # Only ship what the operator's PC needs at runtime: the built executables,
+    # the protocol-handler scripts, and the sources build.bat falls back to when
+    # the exe is missing. Legacy vbcode/, PyInstaller build/ and old data folders
+    # push the zip past 120 MB and time out the download.
+    include_dirs  = ('dist', 'protocol-handler')
+    include_files = (
+        'main.py', 'usb_transfer.py', 'serial_transfer.py', 'requirements.txt',
+        'build.bat', 'build.sh', 'PalmtechDataTransfer.spec',
+    )
     # Windows shell metadata files — the browser's File System Access API refuses
-    # to create files with these names on any platform, so leave them out entirely.
-    skip_names = {'desktop.ini', 'thumbs.db'}
+    # to create files with these names on any platform — plus local runtime
+    # state from the dev machine's own runs of the tool.
+    skip_names = {'desktop.ini', 'thumbs.db', 'transfer_log.txt', 'transfer.pid'}
+
+    paths = [tool_dir / name for name in include_files if (tool_dir / name).is_file()]
+    for dname in include_dirs:
+        for root, _, files in os.walk(tool_dir / dname):
+            paths.extend(Path(root) / fname for fname in files)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_STORED) as zf:
-        for root, _, files in os.walk(tool_dir):
-            for fname in files:
-                if fname.lower() in skip_names:
-                    continue
-                fpath = Path(root) / fname
-                zf.write(fpath, arcname=str(Path('PalmtechDataTransfer') / fpath.relative_to(tool_dir)))
+        for fpath in paths:
+            if fpath.name.lower() in skip_names:
+                continue
+            zf.write(fpath, arcname=str(Path('PalmtechDataTransfer') / fpath.relative_to(tool_dir)))
     buf.seek(0)
 
     response = HttpResponse(buf.read(), content_type='application/zip')
