@@ -545,6 +545,7 @@ export default function DeviceDownload() {
   };
 
   const allOn = Object.values(selected).every(Boolean);
+  const currentIdx = progress.findIndex(p => p.status === 'downloading');
 
   return (
     <div className="max-w-xl mx-auto py-10 px-4">
@@ -760,7 +761,11 @@ export default function DeviceDownload() {
         {downloading
           ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
           : <Download size={16} />}
-        {downloading ? 'Downloading…' : 'Download'}
+        {downloading
+          ? (currentIdx >= 0
+              ? `Downloading ${progress[currentIdx].label} (${currentIdx + 1}/${progress.length})…`
+              : 'Downloading…')
+          : 'Download'}
       </button>
 
       {settingsSelected && !selectedDevice && !downloading && (
