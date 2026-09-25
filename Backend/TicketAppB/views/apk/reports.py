@@ -592,6 +592,9 @@ def apk_tickets(request):
             'st_count': t.st_count,
             'phy_count': t.phy_count,
             'lugg_count': t.lugg_count,
+            'ladies_count': t.ladies_count,
+            'senior_count': t.senior_count,
+            'pass_count': pass_count,
         })
 
     return Response({
