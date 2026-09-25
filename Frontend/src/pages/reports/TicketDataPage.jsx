@@ -295,6 +295,7 @@ function TicketDetailModal({ ticket: t, onClose }) {
             <FieldBlock label="Luggage"  value={t.lugg_count} />
             <FieldBlock label="Ladies"   value={t.ladies_count} />
             <FieldBlock label="Senior"   value={t.senior_count} />
+            <FieldBlock label="Pass"     value={t.ticket_type_display?.includes('Pass') ? getPaxCount(t) : 0} />
             <FieldBlock label="Total"    value={t.total_tickets} />
           </FieldGroup>
 
