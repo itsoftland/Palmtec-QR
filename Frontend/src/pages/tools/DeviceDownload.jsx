@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import api from '../../assets/js/axiosConfig';
-import { Download, MonitorDown, X, Check, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Download, MonitorDown, X, Check, ChevronDown, AlertTriangle, FolderOpen } from 'lucide-react';
 
 const FILE_OPTIONS = [
   { key: 'settings',  label: 'Settings',        desc: 'BUS.DAT'                                            },
@@ -200,6 +200,56 @@ function RouteSelectModal({ routes, selected, onToggle, onConfirm, onClose }) {
   );
 }
 
+// ── Folder Selection Info Modal ─────────────────────────────────────────────
+function FolderInfoModal({ onConfirm, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+            <FolderOpen size={18} />
+          </div>
+          <h2 className="text-base font-bold text-slate-800">Choose a folder</h2>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+            <p className="text-sm font-semibold text-slate-700">Already have the Palmtech Data Transfer tool?</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Select the folder that <strong>contains</strong> the <code className="text-slate-700">PalmtechDataTransfer</code> folder.
+              The tool won't be downloaded again — only the data files will be updated.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+            <p className="text-sm font-semibold text-slate-700">First time on this computer?</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Select any folder (e.g. Desktop or Documents). The tool will be downloaded there along with the data files.
+            </p>
+          </div>
+          <p className="text-xs text-slate-400">
+            Your browser will ask for permission to edit files in the selected folder — choose <strong>Allow</strong>.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 text-sm font-semibold bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors"
+          >
+            Choose Folder
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Skip Files Warning Modal ────────────────────────────────────────────────
 function SkipWarningModal({ skipped, onConfirm, onClose }) {
   return (
@@ -318,6 +368,7 @@ export default function DeviceDownload() {
   const [selected,       setSelected]       = useState({ settings: true, schedule: true, crew: true, vehicles: true, expenses: true });
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [showSkipModal,  setShowSkipModal]  = useState(false);
+  const [showFolderInfoModal, setShowFolderInfoModal] = useState(false);
   const [routes,         setRoutes]         = useState([]);
   const [routesLoading,  setRoutesLoading]  = useState(false);
   const [selectedRoutes, setSelectedRoutes] = useState([]);
@@ -439,6 +490,17 @@ export default function DeviceDownload() {
       setError('Set a Palmtec ID for the selected device before downloading.');
       return;
     }
+    // Explain what folder to pick first; the modal's button opens the picker
+    // itself so the picker still gets a fresh user click.
+    if (window.showDirectoryPicker) {
+      setShowFolderInfoModal(true);
+      return;
+    }
+    runDownload();
+  };
+
+  const runDownload = async () => {
+    setShowFolderInfoModal(false);
     setDownloading(true);
     setDone(false);
     setSkippedFiles(0);
@@ -540,6 +602,7 @@ export default function DeviceDownload() {
     }
 
     setDownloading(false);
+    setProgress([]);
     setDone(true);
     setShowTransferModal(true);
   };
@@ -783,6 +846,14 @@ export default function DeviceDownload() {
           onToggle={toggleRoute}
           onConfirm={() => setShowRouteModal(false)}
           onClose={() => setShowRouteModal(false)}
+        />
+      )}
+
+      {/* Folder selection info modal */}
+      {showFolderInfoModal && (
+        <FolderInfoModal
+          onConfirm={runDownload}
+          onClose={() => setShowFolderInfoModal(false)}
         />
       )}
 
