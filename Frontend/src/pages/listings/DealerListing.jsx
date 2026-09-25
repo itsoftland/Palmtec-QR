@@ -1039,7 +1039,7 @@ export default function DealerListing() {
                     required={f.required}
                     inputMode={f.name === 'contact_number' ? 'numeric' : undefined}
                     pattern={f.name === 'contact_number' ? '[0-9]*' : undefined}
-                    minLength={f.name === 'contact_number' ? 10 : 3}
+                    minLength={f.name === 'contact_number' ? 10 : 1}
                     maxLength={f.name === 'contact_number' ? 10 : 20}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                   />
@@ -1058,8 +1058,7 @@ export default function DealerListing() {
                 onChange={handleModalInputChange}
                 rows={2}
                 required
-                minLength={3}
-                maxLength={400}
+                minLength={1}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
               />
             </div>
@@ -1210,7 +1209,7 @@ export default function DealerListing() {
                       onChange={e => set('dealer_code', e.target.value.toUpperCase())}
                       placeholder="AP-NTC-01"
                       minLength={3}
-                      maxLength={20}
+                      maxLength={6}
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white uppercase"
                     />
                   </div>
@@ -1223,15 +1222,9 @@ export default function DealerListing() {
                     data-label="Dealer Name"
                     required
                     value={form.dealer_name}
-                    onChange={e => {
-                      const value = e.target.value;
-                      if (value.length <= 20) {
-                        set('dealer_name', value);
-                      }
-                    }}
+                    onChange={e => set('dealer_name', e.target.value)}
                     placeholder="Andhra Bus Tech LLP"
-                    minLength={3}
-                    maxLength={20}
+                    minLength={1}
                     className={inputCls}
                   />
                 </Field>
@@ -1250,7 +1243,7 @@ export default function DealerListing() {
                       }
                     }}
                     placeholder="Owner / manager"
-                    minLength={3}
+                    minLength={1}
                     maxLength={20}
                     className={inputCls}
                   />
@@ -1339,16 +1332,10 @@ export default function DealerListing() {
                     data-label="Address"
                     required
                     value={form.address}
-                    onChange={e => {
-                      const value = e.target.value;
-                      if (value.length <= 400) {
-                        set('address', value);
-                      }
-                    }}
+                    onChange={e => set('address', e.target.value)}
                     rows={2}
                     placeholder="Street, area, landmark…"
-                    minLength={10}
-                    maxLength={400}
+                    minLength={1}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                   />
                 </Field>
@@ -1394,7 +1381,7 @@ export default function DealerListing() {
                         set("user_username", value);
                       }}
                       placeholder="ap-ntc-01"
-                      minLength={3}
+                      minLength={1}
                       maxLength={20}
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                     />
@@ -1411,14 +1398,9 @@ export default function DealerListing() {
                       data-label="Login Email"
                       required
                       value={form.user_email}
-                      onChange={e => {
-                        if (e.target.value.length <= 300) {
-                          set('user_email', e.target.value);
-                        }
-                      }}
+                      onChange={e => set('user_email', e.target.value)}
                       placeholder="login@dealer.in"
-                      minLength={5}
-                      maxLength={300}
+                      minLength={3}
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                     />
                   </div>
@@ -1437,13 +1419,13 @@ export default function DealerListing() {
                       onChange={e => {
                         const value = e.target.value;
 
-                        if (value.length <= 20) {
+                        if (value.length <= 8) {
                           set('user_password', value);
                         }
                       }}
                       placeholder="—"
-                      minLength={8}
-                      maxLength={20}
+                      minLength={6}
+                      maxLength={8}
                       className="flex-1 min-w-0 px-3 py-2 border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                     />
                     <button
