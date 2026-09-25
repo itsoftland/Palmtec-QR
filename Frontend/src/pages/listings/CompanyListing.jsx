@@ -1106,7 +1106,7 @@ export default function CompanyListing() {
                     value={modalForm[f.name] || ''}
                     onChange={handleModalInputChange}
                     required={f.required}
-                    minLength={f.name === 'contact_number' ? 10 : 3}
+                    minLength={f.name === 'contact_number' ? 10 : 1}
                     maxLength={f.name === 'contact_number' ? 10 : f.name === 'company_email' ? 75 : 20}
                     pattern={f.name === 'contact_number' ? '[0-9]{10}' : undefined}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
@@ -1126,8 +1126,7 @@ export default function CompanyListing() {
                 onChange={handleModalInputChange}
                 rows={3}
                 required
-                minLength={3}
-                maxLength={400}
+                minLength={1}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
               />
             </div>
@@ -1458,8 +1457,8 @@ export default function CompanyListing() {
                     }}
                       placeholder="Acme Transport Pvt Ltd"
                       className={inputCls}
-                      minLength={3}
-                      maxLength={20}
+                      minLength={1}
+                      maxLength={200}
                       required
                     />
                   </Field>
@@ -1477,7 +1476,7 @@ export default function CompanyListing() {
                       }}
                       placeholder="ops@acme.in"
                       className={inputCls}
-                      minLength={3}
+                      minLength={1}
                       maxLength={300}
                       required
                     />
@@ -1496,8 +1495,8 @@ export default function CompanyListing() {
                       }}
                       placeholder="Jane Doe"
                       className={inputCls}
-                      minLength={3}
-                      maxLength={20}
+                      minLength={1}
+                      maxLength={50}
                       required
                     />
                   </Field>
@@ -1570,16 +1569,11 @@ export default function CompanyListing() {
                       name="address"
                       data-label="Address"
                       value={form.address}
-                      onChange={(e) => {
-                        if (e.target.value.length <= 400) {
-                          set("address", e.target.value);
-                        }
-                      }}
+                      onChange={(e) => set("address", e.target.value)}
                       rows={2}
                       placeholder="Street, area, landmark…"
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
-                      minLength={10}
-                      maxLength={400}
+                      minLength={1}
                       required
                     />
                   </Field>
@@ -1649,15 +1643,10 @@ export default function CompanyListing() {
                         name="user_email"
                         data-label="Login Email"
                         value={form.user_email}
-                        onChange={(e) => {
-                          if (e.target.value.length <= 300) {
-                            set("user_email", e.target.value);
-                          }
-                        }}
+                        onChange={(e) => set("user_email", e.target.value)}
                         placeholder="admin@acme.in"
                         className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
-                        minLength={3}
-                        maxLength={300}
+                        minLength={1}
                         required
                       />
                     </div>
@@ -1674,14 +1663,14 @@ export default function CompanyListing() {
                           data-label="Password"
                           value={form.user_password}
                           onChange={(e) => {
-                            if (e.target.value.length <= 20) {
+                            if (e.target.value.length <= 8) {
                               set("user_password", e.target.value);
                             }
                           }}
                           placeholder="Password"
                           className="w-full px-3 py-2 pr-9 border border-slate-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                           minLength={6}
-                          maxLength={20}
+                          maxLength={8}
                           required
                         />
                         <button
