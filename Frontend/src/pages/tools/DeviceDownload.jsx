@@ -78,6 +78,17 @@ async function getExistingNestedDirectory(rootHandle, pathParts) {
   return target;
 }
 
+// The transfer tool reads mode.txt to decide its action — make sure an
+// existing install is set to "download" before new files are written.
+async function ensureDownloadMode(dirHandle) {
+  const fileHandle = await dirHandle.getFileHandle('mode.txt', { create: true });
+  const content    = (await (await fileHandle.getFile()).text()).trim().toLowerCase();
+  if (content === 'download') return;
+  const writable = await fileHandle.createWritable();
+  await writable.write('download');
+  await writable.close();
+}
+
 async function writeFileToDirectory(blob, dirHandle, filename) {
   const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
   const writable   = await fileHandle.createWritable();
@@ -451,6 +462,15 @@ export default function DeviceDownload() {
           toolAlreadyExists = true;
         } catch (err) {
           if (err.name !== 'NotFoundError') throw err;
+        }
+        if (toolAlreadyExists) {
+          try {
+            await ensureDownloadMode(distFilesHandle);
+          } catch (err) {
+            setDownloading(false);
+            setError(`Failed to update mode.txt: ${err.message}`);
+            return;
+          }
         }
       } catch (err) {
         setDownloading(false);
