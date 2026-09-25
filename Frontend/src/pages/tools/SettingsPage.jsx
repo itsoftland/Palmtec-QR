@@ -333,8 +333,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.main_display}
             onChange={onChange}
             placeholder="e.g. Your Company Name"
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={31}
             loading={loading}
             error={err('main_display')}
           />
@@ -345,8 +345,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.main_display2}
             onChange={onChange}
             placeholder="e.g. Bus Ticketing"
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={22}
             loading={loading}
             error={err('main_display2')}
           />
@@ -357,8 +357,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.header1}
             onChange={onChange}
             placeholder="e.g. Your Transport Co."
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={31}
             loading={loading}
             error={err('header1')}
           />
@@ -369,8 +369,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.header2}
             onChange={onChange}
             placeholder="e.g. PO Box 123 City"
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={31}
             loading={loading}
             error={err('header2')}
           />
@@ -381,8 +381,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.header3}
             onChange={onChange}
             placeholder="e.g. District Name"
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={31}
             loading={loading}
             error={err('header3')}
           />
@@ -393,8 +393,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.footer1}
             onChange={onChange}
             placeholder="e.g. Not Transferable"
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={18}
             loading={loading}
             error={err('footer1')}
           />
@@ -405,8 +405,8 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
             value={formData.footer2}
             onChange={onChange}
             placeholder="e.g. Your Company Pvt Ltd"
-            minLength={3}
-            maxLength={100}
+            minLength={1}
+            maxLength={18}
             loading={loading}
             error={err('footer2')}
           />
