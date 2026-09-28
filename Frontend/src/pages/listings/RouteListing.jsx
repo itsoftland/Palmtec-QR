@@ -498,6 +498,11 @@ export default function RouteListing() {
   };
 
   const saveStageEntry = () => {
+    // Enter key bypasses the disabled Save button — guard here too.
+    if (wizardData.stages.length >= (parseInt(wizardData.no_of_stages) || 0)) {
+      window.alert('Stage limit reached. Remove a stage to add another.');
+      return;
+    }
     const name = stageInput.stage_name.trim();
     if (!name) {
       window.alert('Stage name is required.');
@@ -540,6 +545,15 @@ export default function RouteListing() {
     }));
     setStageInput({ stage_name: '', distance: '', stage_code: suggestStageCode([...pendingCodes, stageInput.stage_code]) });
     setTimeout(() => stageNameRef.current?.focus(), 50);
+  };
+
+  const removeStageEntry = (idx) => {
+    // Next stage would become first with a non-zero distance — first stage must stay at 0 km.
+    if (idx === 0 && wizardData.stages.length > 1) {
+      window.alert('First stage must be 0 km. Remove the later stages first.');
+      return;
+    }
+    setWizardData(prev => ({ ...prev, stages: prev.stages.filter((_, i) => i !== idx) }));
   };
 
   const submitWizard = async () => {
@@ -1376,11 +1390,12 @@ export default function RouteListing() {
                             <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider">Stage Name</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider w-20">Code</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider w-20">KM</th>
+                            <th className="px-3 py-2 w-10"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {wizardData.stages.length === 0 ? (
-                            <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400 text-sm">No stages entered yet.</td></tr>
+                            <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-sm">No stages entered yet.</td></tr>
                           ) : wizardData.stages.map((s, idx) => (
                             <tr key={idx} className="hover:bg-slate-50">
                               <td className="px-3 py-2 text-sm font-mono text-slate-600">{idx + 1}</td>
@@ -1390,12 +1405,19 @@ export default function RouteListing() {
                               </td>
                               <td className="px-3 py-2 text-sm font-mono text-slate-500">{s.stage_code}</td>
                               <td className="px-3 py-2 text-sm text-slate-600">{s.distance}</td>
+                              <td className="px-3 py-2 text-right">
+                                <button type="button" onClick={() => removeStageEntry(idx)} title="Remove stage"
+                                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                                  <X size={14} />
+                                </button>
+                              </td>
                             </tr>
                           ))}
                           {Array.from({ length: Math.max(0, n - stagesEntered) }, (_, i) => (
                             <tr key={`empty-${i}`} className="bg-slate-50/50">
                               <td className="px-3 py-2 text-sm text-slate-300">{stagesEntered + i + 1}</td>
                               <td className="px-3 py-2 text-sm text-slate-300 italic">— not entered —</td>
+                              <td className="px-3 py-2"></td>
                               <td className="px-3 py-2"></td>
                               <td className="px-3 py-2"></td>
                             </tr>
