@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.db import models
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
+
 from .company import Company
 
 # for up and down trip indications.
@@ -565,3 +566,198 @@ class ExpenseData(models.Model):
 
     def __str__(self):
         return f"Expense {self.schedule_no}/{self.trip_no} - {self.palmtec_id}"
+
+
+''' 
+    model for store inspection report
+'''
+
+class BusInspection(models.Model):
+
+    class Direction(models.IntegerChoices):
+        UP = 0, "UP"
+        DOWN = 1, "DOWN"
+
+    # ---------------------------------------------------------
+    # API
+    # ---------------------------------------------------------
+
+    endpoint = models.CharField(
+        max_length=100,
+        default="getInspectorReport?fn=InspRpt",
+    )
+
+    # Exact original pipe-delimited payload received from device
+    raw_payload = models.TextField(
+        blank=True,
+        default="",
+        help_text="Original raw pipe-delimited payload received from device",
+    )
+
+    # ---------------------------------------------------------
+    # Device / Company
+    # ---------------------------------------------------------
+
+    unique_code = models.CharField(
+        max_length=30,
+        unique=True,
+        db_index=True,
+    )
+
+    palmtec_id = models.CharField(
+        max_length=50,
+        db_index=True,
+    )
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.PROTECT,
+        related_name="devices",
+        db_index=True,
+    )
+
+    # ---------------------------------------------------------
+    # Inspector / Trip
+    # ---------------------------------------------------------
+
+    inspector_id = models.CharField(
+        max_length=7,
+        db_index=True,
+    )
+
+    schedule_no = models.PositiveIntegerField()
+
+    trip_no = models.PositiveIntegerField()
+
+    direction = models.PositiveSmallIntegerField(
+        choices=Direction.choices,
+    )
+
+    # ---------------------------------------------------------
+    # Route
+    # ---------------------------------------------------------
+
+    route_id = models.ForeignKey(
+        'Route',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inspections',
+    )
+
+    stage_name = models.CharField(
+        max_length=150,
+    )
+
+    # ---------------------------------------------------------
+    # Inspection Date / Time
+    # ---------------------------------------------------------
+
+    inspection_date = models.DateField(
+        db_index=True,
+    )
+
+    inspection_time = models.TimeField()
+
+    # ---------------------------------------------------------
+    # Passenger / Collection
+    # ---------------------------------------------------------
+
+    passengers_in_bus = models.PositiveIntegerField(
+        default=0,
+    )
+
+    trip_collection = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        validators=[
+            MinValueValidator(0),
+        ],
+    )
+
+    # ---------------------------------------------------------
+    # Bus / Staff
+    # ---------------------------------------------------------
+
+    bus_no = models.CharField(
+        max_length=30,
+        db_index=True,
+    )
+
+    driver = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    conductor = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    # ---------------------------------------------------------
+    # Device
+    # ---------------------------------------------------------
+
+    battery_level = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[
+            MaxValueValidator(100),
+        ],
+    )
+
+     # Modem checksum
+    checksum = models.CharField(
+        max_length=32,
+        db_index=True,
+        help_text="Checksum appended by the modem",
+    )
+
+    # ---------------------------------------------------------
+    # Django timestamps
+    # ---------------------------------------------------------
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        db_table = "bus_inspections"
+
+        ordering = [
+            "-inspection_date",
+            "-inspection_time",
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["bus_no", "inspection_date"],
+                name="inspection_bus_date_idx",
+            ),
+            models.Index(
+                fields=["route_id", "inspection_date"],
+                name="inspection_route_date_idx",
+            ),
+            models.Index(
+                fields=["inspector_id", "inspection_date"],
+                name="inspection_inspector_date_idx",
+            ),
+            models.Index(
+                fields=["palmtec_id", "inspection_date"],
+                name="inspection_palmtec_date_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.bus_no} - "
+            f"{self.route_id.route_code if self.route_id else ''} - "
+            f"{self.inspection_date} "
+            f"{self.inspection_time}"
+        )

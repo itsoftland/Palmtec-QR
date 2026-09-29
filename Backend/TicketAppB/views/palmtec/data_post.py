@@ -12,13 +12,13 @@ from TicketAppB.models.auth import UserSession, FCMSession
 from FCM.models import FCMLog
 from FCM.firebase import send_push_notification
 
-from ...models import RawDataLog, OdometerData, ExpenseData, Employee, VehicleType, TripData, ScheduleData, ExpenseMaster
+from ...models import RawDataLog, OdometerData, ExpenseData, Employee, VehicleType, TripData, ScheduleData, ExpenseMaster, BusInspection
 from ...tasks import (
     process_transaction_data,
     process_trip_open_data, process_trip_close_data, process_trip_close_summary_data,
     process_schedule_open_data, process_schedule_close_data, process_schedule_close_summary_data,
 )
-from ..utils import _get_company_for_palmtec, _validate_checksum
+from ..utils import _get_company_for_palmtec, _get_route_for_palmtec, _validate_checksum
 
 log_ticket           = logging.getLogger('ticket.palmtec.ticket_data')
 log_trip_open        = logging.getLogger('ticket.palmtec.trip_open')
@@ -29,6 +29,7 @@ log_schedule_close   = logging.getLogger('ticket.palmtec.schedule_close')
 log_schedule_close_sum = logging.getLogger('ticket.palmtec.schedule_close_summary')
 log_odometer         = logging.getLogger('ticket.palmtec.odometer')
 log_expense          = logging.getLogger('ticket.palmtec.expense')
+log_inspector        = logging.getLogger('ticket.palmtec.inspector_report')
 
 
 def _resolve_trip_by_palmtec(palmtec_id, company, trip_no, record_date):
@@ -833,5 +834,76 @@ def getExpenseDataFromDevice(request):
 
 @csrf_exempt
 def get_inspector_report_from_device(request):
+    # Protocol: [0]=InspRpt [1]=unique_code [2]=palmtec_id [3]=license_code
+    # [4]=inspector_id [5]=schedule_no [6]=trip_no [7]=direction
+    # [8]=route_code [9]=stage_name
+    # [10]=inspection_date [11]=inspection_time
+    # [12]=passengers_in_bus [13]=trip_collection
+    # [14]=bus_no [15]=driver [16]=conductor
+    # [17]=battery_level [18]=checksum [19]=empty
+    if request.method != "GET":
+        return HttpResponse("METHOD_NOT_ALLOWED", status=405, content_type="text/plain")
 
-    return HttpResponse("NANNI", content_type="text/plain", status=200)
+    raw = request.GET.get("fn")
+    if not raw:
+        return HttpResponse("NO_DATA", status=400, content_type="text/plain")
+
+    parts = raw.split("|")
+
+    if len(parts) < 19:
+        return HttpResponse("MISSING_DATA", status=400, content_type="text/plain")
+
+    if parts[0] != 'InspRpt':
+        return HttpResponse("INVALID", status=400, content_type="text/plain")
+
+    log_inspector.info("RECV fn=%s palmtec=%s raw=%s", parts[1], parts[2], raw)
+
+    if not _validate_checksum('getInspectorReport', raw):
+        return HttpResponse("INVALID_CHECKSUM", status=400, content_type="text/plain")
+
+    company_instance = None
+    try:
+        company_instance = _get_company_for_palmtec(parts[3]) if parts[3] else None
+        if not company_instance:
+            return HttpResponse("INVALID_COMPANY", status=400, content_type="text/plain")
+
+        def _p(i, default=None):
+            return parts[i] if len(parts) > i and parts[i] else default
+
+        inspection_date = datetime.strptime(_p(10), "%Y-%m-%d").date() if _p(10) else None
+        inspection_time = datetime.strptime(_p(11), "%H:%M:%S").time() if _p(11) else None
+
+        st_name = _p(9).replace('_', ' ') if _p(9) else _p(9)
+
+        route = _get_route_for_palmtec(_p(8), company_instance) if _p(8) else None
+
+        BusInspection.objects.create(
+            raw_payload       = raw,
+            unique_code       = _p(1),
+            palmtec_id        = _p(2),
+            company           = company_instance,
+            inspector_id      = _p(4),
+            schedule_no       = int(_p(5)) if _p(5) else 0,
+            trip_no           = int(_p(6)) if _p(6) else 0,
+            direction         = int(_p(7)) if _p(7) else BusInspection.Direction.UP,
+            route_id          = route,
+            stage_name        = st_name,
+            inspection_date   = inspection_date,
+            inspection_time   = inspection_time,
+            passengers_in_bus = int(_p(12)) if _p(12) else 0,
+            trip_collection   = Decimal(_p(13, '0')),
+            bus_no            = _p(14),
+            driver            = _p(15, ''),
+            conductor         = _p(16, ''),
+            battery_level     = int(_p(17)) if _p(17) else 0,
+            checksum          = _p(18),
+        )
+
+        return HttpResponse(f'OK#SUCCESS#fn={parts[1]}#', content_type="text/plain", status=200)
+
+    except IntegrityError:
+        return HttpResponse(f'OK#DUPLICATE#fn={parts[1]}#', content_type="text/plain", status=200)
+    except Exception as e:
+        log_inspector.exception("InspectorReport failed raw=%s err=%s", raw, e, extra={'company_id': company_instance.company_id} if company_instance else {})
+        print("-------------------------", e)
+        return HttpResponse("ERROR", status=500, content_type="text/plain")

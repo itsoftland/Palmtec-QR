@@ -195,7 +195,7 @@ def register_with_license_server(company):
         }
 
 
-def poll_license_authentication(customer_id, timeout_seconds=120, interval_seconds=3):
+def poll_license_authentication(customer_id, timeout_seconds=120, interval_seconds=20):
     """
     Poll license server for authentication approval.
     Checks every 3 seconds for up to 2 minutes (40 attempts max).
@@ -755,6 +755,24 @@ def _safe_int(val, default=0):
         return int(val)
     except (TypeError, ValueError):
         return default
+
+
+def _map_auth_status(raw_status, fallback):
+    """
+    Map the license server's free-text Authenticationstatus into our enum.
+    The server doesn't always return the exact literal 'Expired'/'Block' —
+    e.g. it can send "Your licence is expired. Please contact Admin !!!" —
+    so this matches by substring instead of an exact-string lookup that
+    silently misses real responses.
+    """
+    s = (raw_status or '').lower()
+    if s == 'approve':
+        return Company.AuthStatus.APPROVED
+    if 'expired' in s:
+        return Company.AuthStatus.EXPIRED
+    if 'block' in s:
+        return Company.AuthStatus.BLOCKED
+    return fallback
 
 
 @api_view(['POST'])
@@ -1871,12 +1889,7 @@ def sync_company_license_confirm(request, pk):
     raw_from = auth_data.get('ProductFromDate')
     raw_to   = auth_data.get('ProductToDate')
 
-    status_map = {
-        'Approve': Company.AuthStatus.APPROVED,
-        'Expired': Company.AuthStatus.EXPIRED,
-        'Block':   Company.AuthStatus.BLOCKED,
-    }
-    new_auth_status = status_map.get(
+    new_auth_status = _map_auth_status(
         auth_data.get('Authenticationstatus', ''),
         company.authentication_status,
     )

@@ -97,6 +97,24 @@ def _safe_int(val, default=0):
         return default
 
 
+def _map_auth_status(raw_status, fallback):
+    """
+    Map the license server's free-text Authenticationstatus into our enum.
+    The server doesn't always return the exact literal 'Expired'/'Block' —
+    e.g. it can send "Your licence is expired. Please contact Admin !!!" —
+    so this matches by substring like the background poller already does,
+    instead of an exact-string lookup that silently misses real responses.
+    """
+    s = (raw_status or '').lower()
+    if s == 'approve':
+        return Dealer.AuthStatus.APPROVED
+    if 'expired' in s:
+        return Dealer.AuthStatus.EXPIRED
+    if 'block' in s:
+        return Dealer.AuthStatus.BLOCKED
+    return fallback
+
+
 def _background_dealer_license_polling(dealer_id):
     """
     Background thread: poll license server for dealer approval,
@@ -107,10 +125,10 @@ def _background_dealer_license_polling(dealer_id):
         dealer = Dealer.objects.get(id=dealer_id)
 
         # Poll (reuses same auth endpoint as company)
-        payload = {"CustomerId": dealer.unique_identifier or dealer.product_registration_id}
+        payload = {"CustomerId": dealer.customer_id}
         import time
         deadline = time.time() + 120
-        interval = 3
+        interval = 20
         poll_count = 0
 
         while time.time() < deadline:
@@ -213,7 +231,10 @@ def _populate_dealer_counts(dealer, auth_data):
         dealer.product_to_date = dt.date() if dt else None
 
     dealer.product_registration_id = _safe_int(auth_data.get('ProductRegistrationId'))
-    dealer.unique_identifier        = auth_data.get('UniqueIDentifier', '')
+    # Display-only field from the auth response — never the lookup key (that's
+    # customer_id, set once at registration). Guard against blanking it out
+    # when the server omits the field, same as company.py does.
+    dealer.unique_identifier = auth_data.get('UniqueIDentifier', '') or dealer.unique_identifier
     return True, None
 
 
@@ -292,20 +313,25 @@ def register_dealer_with_license_server(request, pk):
     except Dealer.DoesNotExist:
         return Response({'error': 'Dealer not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    if dealer.product_registration_id:
+    if dealer.customer_id:
         return Response({
             'message': 'Dealer already registered with license server.',
-            'registration_id': dealer.product_registration_id,
+            'registration_id': dealer.customer_id,
         }, status=status.HTTP_200_OK)
 
     result = _register_dealer_with_license_server(dealer)
     if not result['success']:
         return Response({'error': result['error']}, status=status.HTTP_502_BAD_GATEWAY)
 
-    # License server returns a CustomerId string — store as unique_identifier
-    # and use it for subsequent auth polls.
+    # License server returns a CustomerId string — store it as the stable
+    # lookup key (customer_id) used for every future auth/sync call. Also
+    # mirror it into unique_identifier so the frontend's pre-approval
+    # "Authenticate" button gating (which checks unique_identifier) lights up
+    # immediately; that field gets replaced with the real profile identifier
+    # once the license server approves.
+    dealer.customer_id = result['customer_id']
     dealer.unique_identifier = result['customer_id']
-    dealer.save(update_fields=['unique_identifier'])
+    dealer.save(update_fields=['customer_id', 'unique_identifier'])
 
     logger.info(f"Dealer '{dealer.dealer_name}' registered with license server. ID={result['customer_id']}")
 
@@ -313,7 +339,7 @@ def register_dealer_with_license_server(request, pk):
         actor=user, action=AuditLog.ActionType.LICENSE_RENEWAL,
         target_model='Dealer', target_id=dealer.pk,
         target_display=dealer.dealer_name,
-        details={'step': 'register', 'customer_id': dealer.unique_identifier},
+        details={'step': 'register', 'customer_id': dealer.customer_id},
         ip_address=request.META.get('REMOTE_ADDR'),
     )
 
@@ -341,7 +367,7 @@ def validate_dealer_license(request, pk):
         except Dealer.DoesNotExist:
             return Response({'error': 'Dealer not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        if not dealer.unique_identifier and not dealer.product_registration_id:
+        if not dealer.customer_id:
             return Response({
                 'error': 'Dealer not registered with license server yet. Call /register-dealer-license first.'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -719,11 +745,10 @@ def sync_dealer_license(request, pk):
     except Dealer.DoesNotExist:
         return Response({'error': 'Dealer not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    if not dealer.unique_identifier and not dealer.product_registration_id:
+    if not dealer.customer_id:
         return Response({'error': 'Dealer is not registered with the license server yet.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    customer_id = dealer.unique_identifier or dealer.product_registration_id
-    result = _fetch_dealer_from_license_server(customer_id)
+    result = _fetch_dealer_from_license_server(dealer.customer_id)
     if not result['success']:
         return Response({'error': result['error']}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -747,23 +772,17 @@ def sync_dealer_license_confirm(request, pk):
     except Dealer.DoesNotExist:
         return Response({'error': 'Dealer not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    if not dealer.unique_identifier and not dealer.product_registration_id:
+    if not dealer.customer_id:
         return Response({'error': 'Dealer is not registered with the license server yet.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    customer_id = dealer.unique_identifier or dealer.product_registration_id
-    result = _fetch_dealer_from_license_server(customer_id)
+    result = _fetch_dealer_from_license_server(dealer.customer_id)
     if not result['success']:
         return Response({'error': result['error']}, status=status.HTTP_502_BAD_GATEWAY)
 
     auth_data = result['data']
 
     # Set auth status before populate (needed if approve→ APPROVED)
-    status_map = {
-        'Approve': Dealer.AuthStatus.APPROVED,
-        'Expired': Dealer.AuthStatus.EXPIRED,
-        'Block':   Dealer.AuthStatus.BLOCKED,
-    }
-    dealer.authentication_status = status_map.get(
+    dealer.authentication_status = _map_auth_status(
         auth_data.get('Authenticationstatus', ''),
         dealer.authentication_status,
     )

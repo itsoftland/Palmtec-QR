@@ -225,6 +225,11 @@ class Dealer(models.Model):
         blank=True,
         db_index=True,
     )
+    # CustomerId returned by the license server at registration. Stable —
+    # used for every subsequent authenticate/sync lookup. Never overwritten
+    # by auth-response fields (unlike unique_identifier below). Equivalent to
+    # Company.company_id.
+    customer_id              = models.CharField(max_length=255, null=True, blank=True)
     product_registration_id = models.IntegerField(null=True, blank=True)
     unique_identifier       = models.CharField(max_length=255, null=True, blank=True)
     product_from_date       = models.DateField(null=True, blank=True)

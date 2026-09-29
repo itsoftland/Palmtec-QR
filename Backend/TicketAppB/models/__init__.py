@@ -70,11 +70,13 @@ from .transactions import (
     ExpenseData,
     RawDataLog,
     Direction,
+    BusInspection,
 )
 
 TRANSACTION_MODELS = [
     'TransactionData', 'ScheduleData', 'TripData',
     'OdometerData', 'ExpenseData', 'RawDataLog', 'Direction',
+    'BusInspection',
 ]
 
 # Payment models

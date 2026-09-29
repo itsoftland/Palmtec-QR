@@ -32,6 +32,7 @@ class DealerSerializer(serializers.ModelSerializer):
             'gst_number',
             'is_active',
             'authentication_status',
+            'customer_id',
             'product_registration_id',
             'unique_identifier',
             'product_from_date',
@@ -52,6 +53,7 @@ class DealerSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             'authentication_status',
+            'customer_id',
             'product_registration_id',
             'unique_identifier',
             'number_of_licences',
