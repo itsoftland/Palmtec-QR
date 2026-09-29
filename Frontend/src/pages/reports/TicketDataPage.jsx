@@ -14,7 +14,11 @@ import {
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 const fmt = {
-  inr: (n) => `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  inr: (n) => {
+    const num = Number(n) || 0;
+    const sign = num < 0 ? '-' : '';
+    return `${sign}₹${Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  },
   date: (d) => {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
@@ -29,6 +33,13 @@ const getPaxCount = (t) => {
   const isPass = t.ticket_type_display?.includes('Pass');
   if (!isPass) return t.total_tickets;
   return t.pass_number ? 1 : (t.pass_id ?? t.total_tickets);
+};
+
+// ─── Refund tickets subtract from collection ───────────────────────────────────
+const isRefund = (t) => !!t.refund_status;
+const signedAmount = (t) => {
+  const amt = Number(t.ticket_amount) || 0;
+  return isRefund(t) ? -Math.abs(amt) : amt;
 };
 
 // ─── Featured "total collection" dark card ────────────────────────────────────
@@ -119,6 +130,7 @@ function FieldGroup({ title, children, columns = 2 }) {
 // ─── Ticket table row ─────────────────────────────────────────────────────────
 function TicketRow({ ticket: t, onView, isNew }) {
   const isUpi = t.ticket_status === 'UPI';
+  const refund = isRefund(t);
   return (
     <tr className={`transition-colors hover:bg-slate-50/70 group ${isNew ? 'bg-slate-100/60' : ''}`}>
       {/* Payment icon */}
@@ -186,9 +198,11 @@ function TicketRow({ ticket: t, onView, isNew }) {
 
       {/* Amount */}
       <td className="px-4 py-3.5 text-right">
-        <div className="font-bold text-slate-900 tabular-nums">{fmt.inr(t.ticket_amount)}</div>
-        <div className={`text-[10px] font-medium ${isUpi ? 'text-blue-600' : 'text-amber-700'}`}>
-          {t.ticket_status}
+        <div className={`font-bold tabular-nums ${refund ? 'text-rose-600' : 'text-slate-900'}`}>
+          {fmt.inr(signedAmount(t))}
+        </div>
+        <div className={`text-[10px] font-medium ${refund ? 'text-rose-600' : isUpi ? 'text-blue-600' : 'text-amber-700'}`}>
+          {refund ? 'Refund' : t.ticket_status}
         </div>
       </td>
 
@@ -208,6 +222,7 @@ function TicketRow({ ticket: t, onView, isNew }) {
 // ─── Ticket detail modal ──────────────────────────────────────────────────────
 function TicketDetailModal({ ticket: t, onClose }) {
   const isUpi = t.ticket_status === 'UPI';
+  const refund = isRefund(t);
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-3xl rounded-2xl max-h-[85vh] overflow-y-auto">
@@ -234,8 +249,10 @@ function TicketDetailModal({ ticket: t, onClose }) {
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-bold text-slate-900 tabular-nums">{fmt.inr(t.ticket_amount)}</p>
-                <p className="text-[11px] text-slate-500">{t.ticket_status}</p>
+                <p className={`text-2xl font-bold tabular-nums ${refund ? 'text-rose-600' : 'text-slate-900'}`}>
+                  {fmt.inr(signedAmount(t))}
+                </p>
+                <p className={`text-[11px] ${refund ? 'text-rose-600' : 'text-slate-500'}`}>{refund ? 'Refund' : t.ticket_status}</p>
               </div>
             </div>
 
@@ -343,7 +360,7 @@ function TicketDetailModal({ ticket: t, onClose }) {
 
           <div className="grid grid-cols-2 gap-3">
             <FieldBlock label="Payment Mode"  value={t.ticket_status}   accent={isUpi ? 'blue' : undefined} />
-            <FieldBlock label="Total Amount"  value={fmt.inr(t.ticket_amount)} accent="slate" />
+            <FieldBlock label="Total Amount"  value={fmt.inr(signedAmount(t))} accent="slate" />
           </div>
 
           <div className="flex justify-end pt-2 border-t border-slate-100">
@@ -562,11 +579,11 @@ export default function TicketDataPage() {
   const cashRows = filteredData.filter(t => t.ticket_status !== 'UPI');
   const summary = {
     tickets:  filteredData.reduce((s, t) => s + (t.total_tickets || 0), 0),
-    amount:   filteredData.reduce((s, t) => s + Number(t.ticket_amount || 0), 0),
+    amount:   filteredData.reduce((s, t) => s + signedAmount(t), 0),
     upiCount: upiRows.length,
     cashCount: cashRows.length,
-    upiAmt:   upiRows.reduce((s, t) => s + Number(t.ticket_amount || 0), 0),
-    cashAmt:  cashRows.reduce((s, t) => s + Number(t.ticket_amount || 0), 0),
+    upiAmt:   upiRows.reduce((s, t) => s + signedAmount(t), 0),
+    cashAmt:  cashRows.reduce((s, t) => s + signedAmount(t), 0),
     devices:  new Set(filteredData.map(t => t.palmtec_id)).size,
   };
 
@@ -907,7 +924,7 @@ export default function TicketDataPage() {
                       {currentData.reduce((s, t) => s + (t.total_tickets || 0), 0)}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-slate-800">
-                      {fmt.inr(currentData.reduce((s, t) => s + Number(t.ticket_amount || 0), 0))}
+                      {fmt.inr(currentData.reduce((s, t) => s + signedAmount(t), 0))}
                     </td>
                     <td></td>
                   </tr>

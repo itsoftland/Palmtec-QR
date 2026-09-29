@@ -197,7 +197,7 @@ function getStatusStyle(s) {
   }
 }
 
-function DiffRow({ label, current, incoming, inUse }) {
+function DiffRow({ label, current, incoming }) {
   const changed = current !== incoming;
   return (
     <div className={`rounded-lg px-3 py-2.5 border text-sm ${changed ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
@@ -206,7 +206,6 @@ function DiffRow({ label, current, incoming, inUse }) {
         <span className="text-slate-600">Old: <strong>{current ?? '—'}</strong></span>
         {changed && <span className="text-blue-700">→ New: <strong>{incoming}</strong></span>}
         {!changed && <span className="text-slate-400 text-xs">(no change)</span>}
-        {inUse !== undefined && <span className="text-slate-500 text-xs ml-auto">In use: {inUse}</span>}
       </div>
     </div>
   );
@@ -1252,10 +1251,10 @@ export default function CompanyListing() {
                 {!hasError && d && (
                   <div className="space-y-2">
                     <DiffRow label="Total Licensed Units" current={d.current?.number_of_licences} incoming={d.incoming?.number_of_licences} />
-                    <DiffRow label="Palmtec Devices" current={d.current?.palmtec_count} incoming={d.incoming?.palmtec_count} inUse={d.in_use?.palmtec_devices_allocated} />
-                    <DiffRow label="Total User Slots" current={d.current?.total_user_count} incoming={d.incoming?.total_user_count} inUse={d.in_use?.active_sessions_total} />
-                    <DiffRow label="Premium User Slots" current={d.current?.premium_user_count} incoming={d.incoming?.premium_user_count} inUse={d.in_use?.active_sessions_premium} />
-                    <DiffRow label="Intermediate User Slots" current={d.current?.intermediate_user_count} incoming={d.incoming?.intermediate_user_count} inUse={d.in_use?.active_sessions_intermediate} />
+                    <DiffRow label="Palmtec Devices" current={d.current?.palmtec_count} incoming={d.incoming?.palmtec_count} />
+                    <DiffRow label="Total User Slots" current={d.current?.total_user_count} incoming={d.incoming?.total_user_count} />
+                    <DiffRow label="Premium User Slots" current={d.current?.premium_user_count} incoming={d.incoming?.premium_user_count} />
+                    <DiffRow label="Intermediate User Slots" current={d.current?.intermediate_user_count} incoming={d.incoming?.intermediate_user_count} />
                     <DiffRow label="Basic User Slots" current={d.current?.basic_user_count} incoming={d.incoming?.basic_user_count} />
                     <DiffRow label="Valid Till" current={d.current?.product_to_date} incoming={d.incoming?.product_to_date} />
                   </div>

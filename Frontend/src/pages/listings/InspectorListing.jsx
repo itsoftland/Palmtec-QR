@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, Search, Calendar } from 'lucide-react';
+import { Shield, Search, Calendar, BatteryMedium } from 'lucide-react';
 import { useFilteredList } from '../../assets/js/useFilteredList';
 import { usePagination }   from '../../assets/js/usePagination';
 import api, { BASE_URL }   from '../../assets/js/axiosConfig';
@@ -20,7 +20,7 @@ export default function InspectorListing() {
 
   const { filteredItems, searchTerm, setSearchTerm } = useFilteredList(
     records,
-    ['inspector_name', 'inspector_code', 'station_no', 'tripmaster_ref_id', 'palmtec_id']
+    ['inspector_id', 'bus_no', 'stage_name', 'route_code', 'palmtec_id']
   );
 
   const {
@@ -34,7 +34,7 @@ export default function InspectorListing() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.get(`${BASE_URL}/masterdata/inspector-details`, {
+      const res = await api.get(`${BASE_URL}/get_all_bus_inspections`, {
         params: { from_date: fromDate, to_date: toDate },
       });
       setRecords(res.data?.data || []);
@@ -49,6 +49,7 @@ export default function InspectorListing() {
   };
 
   const formatTime = (t) => t ? t.slice(0, 5) : '—';
+  const fmtAmount = (n) => `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="p-3 sm:p-5 lg:p-7 min-h-screen bg-slate-50">
@@ -104,7 +105,7 @@ export default function InspectorListing() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input
             className="pl-9"
-            placeholder="Search inspector, station…"
+            placeholder="Search inspector, bus, stage…"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
           />
@@ -121,9 +122,15 @@ export default function InspectorListing() {
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Inspector</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
-                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Station</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Bus</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Route / Stage</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Schedule</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Trip</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Direction</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Driver / Conductor</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Pax</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Collection</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Battery</th>
                   <th className="px-5 py-3.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Device</th>
                 </tr>
               </thead>
@@ -131,14 +138,14 @@ export default function InspectorListing() {
                 {loading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 7 }).map((_, j) => (
+                      {Array.from({ length: 13 }).map((_, j) => (
                         <td key={j} className="px-5 py-3"><Skeleton className="h-4 w-full" /></td>
                       ))}
                     </tr>
                   ))
                 ) : currentItems.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center text-slate-400 text-sm">
+                    <td colSpan={13} className="px-5 py-12 text-center text-slate-400 text-sm">
                       {searchTerm
                         ? 'No results for your search.'
                         : 'No inspection records found for this date range.'}
@@ -148,16 +155,34 @@ export default function InspectorListing() {
                   currentItems.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3">
-                        <p className="text-sm font-medium text-slate-800">{r.inspector_name || '—'}</p>
-                        {r.inspector_code && (
-                          <p className="text-xs text-slate-400 font-mono">{r.inspector_code}</p>
-                        )}
+                        <p className="text-sm font-medium text-slate-800 font-mono">{r.inspector_id || '—'}</p>
                       </td>
-                      <td className="px-5 py-3 text-sm text-slate-700">{r.date}</td>
-                      <td className="px-5 py-3 text-sm text-slate-700 font-mono">{formatTime(r.time)}</td>
-                      <td className="px-5 py-3 text-sm text-slate-700">{r.station_no || '—'}</td>
+                      <td className="px-5 py-3 text-sm text-slate-700">{r.inspection_date}</td>
+                      <td className="px-5 py-3 text-sm text-slate-700 font-mono">{formatTime(r.inspection_time)}</td>
+                      <td className="px-5 py-3 text-sm text-slate-700">{r.bus_no || '—'}</td>
+                      <td className="px-5 py-3">
+                        <p className="text-sm text-slate-700">{r.route_name || r.route_code || '—'}</p>
+                        {r.stage_name && <p className="text-xs text-slate-400">{r.stage_name}</p>}
+                      </td>
                       <td className="px-5 py-3 text-sm text-slate-700">{r.schedule_no ?? '—'}</td>
                       <td className="px-5 py-3 text-sm text-slate-700">{r.trip_no ?? '—'}</td>
+                      <td className="px-5 py-3">
+                        <span className={`text-[10px] font-semibold rounded px-1.5 py-0.5 ${
+                          r.direction_display === 'UP' ? 'bg-sky-50 text-sky-700' : 'bg-violet-50 text-violet-700'
+                        }`}>{r.direction_display || '—'}</span>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-slate-700">
+                        <p>{r.driver || '—'}</p>
+                        <p className="text-xs text-slate-400">{r.conductor || '—'}</p>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-slate-700 text-center">{r.passengers_in_bus ?? '—'}</td>
+                      <td className="px-5 py-3 text-sm font-semibold text-slate-800 text-right">{fmtAmount(r.trip_collection)}</td>
+                      <td className="px-5 py-3">
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-600">
+                          <BatteryMedium size={13} className="text-slate-400" />
+                          {r.battery_level ?? '—'}%
+                        </span>
+                      </td>
                       <td className="px-5 py-3 text-xs font-mono text-slate-500">{r.palmtec_id || '—'}</td>
                     </tr>
                   ))

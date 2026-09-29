@@ -105,6 +105,7 @@ urlpatterns = [
     path('get_all_transaction_data', ticket_reports.get_all_transaction_data, name='get_all_transaction_data'),
     path('get_all_trip_data',        ticket_reports.get_all_trip_data,        name='get_all_trip_data'),
     path('get_all_schedule_data',    ticket_reports.get_all_schedule_data,    name='get_all_schedule_data'),
+    path('get_all_bus_inspections',  ticket_reports.get_bus_inspections,      name='get_bus_inspections'),
 
     # payment aggregator webhooks (aggregator server → us)
     path('postTransactionDetails', aggregator_webhooks.aggregator_settlement_data, name='postTransactionDetails'),

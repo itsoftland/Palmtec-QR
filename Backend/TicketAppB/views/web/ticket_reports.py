@@ -11,9 +11,9 @@ from django.db import OperationalError
 from django.utils.dateparse import parse_datetime
 import pytz
 
-from ...models import TransactionData, TripData, ScheduleData, OdometerData
+from ...models import TransactionData, TripData, ScheduleData, OdometerData, BusInspection
 from ...permissions import LicensePermission
-from ...serializers.transactions import TicketDataSerializer,TripDataSerializer,ScheduleDataSerializer
+from ...serializers.transactions import TicketDataSerializer,TripDataSerializer,ScheduleDataSerializer, BusInspectionSerializer
 
 logger = logging.getLogger('ticket.ticket_report')
 
@@ -248,3 +248,50 @@ def get_all_schedule_data(request):
         logger.exception("Error fetching schedule data")
         return JsonResponse({"message": str(e)},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def get_bus_inspections(request):
+    """
+    Inspector-report records (BusInspection) for the Inspector Records report page.
+
+    Query params:
+        from_date  YYYY-MM-DD  required  — filters on inspection_date
+        to_date    YYYY-MM-DD  required
+    """
+    user = request.user
+
+    try:
+        from_date = request.GET.get('from_date')
+        to_date   = request.GET.get('to_date')
+
+        if not from_date or not to_date:
+            return Response({'error': 'from_date and to_date are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if user.company:
+            qs = BusInspection.objects.filter(
+                company=user.company,
+                inspection_date__gte=from_date,
+                inspection_date__lte=to_date,
+            ).select_related('route_id')
+        else:
+            qs = BusInspection.objects.none()
+
+        qs = qs.order_by('-inspection_date', '-inspection_time')[:500]
+
+        serializer = BusInspectionSerializer(qs, many=True)
+        return Response({
+            "message": "success",
+            "data": serializer.data,
+            "count": len(serializer.data),
+        }, status=status.HTTP_200_OK)
+
+    except OperationalError:
+        return Response({"message": "Database error"},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        logger.exception("Error fetching bus inspection data")
+        return Response({"message": "Data fetching failed", "error": str(e)},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
