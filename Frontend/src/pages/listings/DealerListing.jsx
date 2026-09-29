@@ -191,7 +191,7 @@ function DiffRow({ label, current, incoming, inUse }) {
     <div className={`rounded-lg px-3 py-2.5 border text-sm ${changed ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
       <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">{label}</p>
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-slate-600">Was: <strong>{current ?? '—'}</strong></span>
+        <span className="text-slate-600">Old: <strong>{current ?? '—'}</strong></span>
         {changed && <span className="text-blue-700">→ New: <strong>{incoming}</strong></span>}
         {!changed && <span className="text-slate-400 text-xs">(no change)</span>}
         {inUse !== undefined && <span className="text-slate-500 text-xs ml-auto">Allocated: {inUse}</span>}
