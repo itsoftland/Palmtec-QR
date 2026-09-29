@@ -166,9 +166,11 @@ class TransactionData(models.Model):
             models.Index(fields=['unique_code']),
             models.Index(fields=['ticket_date']),
         ]
+
         constraints = [
             models.UniqueConstraint(
-                fields=['palmtec_id', 'company_code', 'ticket_number', 'ticket_date', 'ticket_time'],
+                # fields=['palmtec_id', 'company_code', 'ticket_number', 'ticket_date', 'ticket_time'],
+                fields=['palmtec_id', 'unique_code', 'company_code', 'ticket_number', 'ticket_date', 'ticket_time'],
                 name='uniq_device_ticket_datetime'
             ),
             # Composite unique constraint scoped per device.

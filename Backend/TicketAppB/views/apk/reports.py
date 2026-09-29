@@ -558,11 +558,24 @@ def apk_tickets(request):
         )
 
     totals = {'full': 0, 'half': 0, 'st': 0, 'phy': 0, 'lugg': 0, 'ladies': 0, 'senior': 0, 'pass': 0}
-    # category-wise ticket amount — ticket_amount is per-row, not per-category.
-    # lugg_amount is a real separate column so it's carved out first; whatever's
-    # left is split across the remaining categories on that row, weighted by count.
+
+    # category-wise ticket amount — despite the "_total_amount" naming, these are
+    # the device's own per-category amount for THIS ticket, not a running trip
+    # total (verified against data: full_total_amount + half_total_amount + ... +
+    # lugg_amount == ticket_amount on every row). So just sum them directly.
+    # Splitting ticket_amount proportionally by passenger count (the old approach)
+    # was wrong whenever categories have different fares (full vs half vs senior).
+    CATEGORY_FIELD = {
+        'full': 'full_total_amount',
+        'half': 'half_total_amount',
+        'st': 'st_total_amount',
+        'phy': 'phy_total_amount',
+        'ladies': 'ladies_total_amount',
+        'senior': 'senior_total_amount',
+    }
     category_amounts = {'full': Decimal('0'), 'half': Decimal('0'), 'st': Decimal('0'), 'phy': Decimal('0'),
                          'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0')}
+
     ticket_list = []
     for t in qs:
         # TransactionData has no pass_count column — pass_number presence or ticket_type 32 marks a pass ticket.
@@ -577,37 +590,12 @@ def apk_tickets(request):
         totals['senior'] += t.senior_count or 0
         totals['pass'] += pass_count
 
-        row_counts = {
-            'full': t.full_count or 0,
-            'half': t.half_count or 0,
-            'st': t.st_count or 0,
-            'phy': t.phy_count or 0,
-            'lugg': t.lugg_count or 0,
-            'ladies': t.ladies_count or 0,
-            'senior': t.senior_count or 0,
-            'pass': pass_count,
-        }
-        categories_present = [k for k, v in row_counts.items() if v > 0]
+        for k, f in CATEGORY_FIELD.items():
+            category_amounts[k] += getattr(t, f) or Decimal('0')
+        category_amounts['lugg'] += t.lugg_amount or Decimal('0')
 
-        lugg_amt = t.lugg_amount or Decimal('0')
-        remaining_amt = t.ticket_amount or Decimal('0')
-        remaining_categories = categories_present
-        if 'lugg' in categories_present:
-            category_amounts['lugg'] += lugg_amt
-            remaining_amt -= lugg_amt
-            remaining_categories = [c for c in categories_present if c != 'lugg']
-
-        if len(remaining_categories) == 1:
-            category_amounts[remaining_categories[0]] += remaining_amt
-        elif remaining_categories:
-            weight_total = sum(row_counts[c] for c in remaining_categories)
-            share_sum = Decimal('0')
-            for c in remaining_categories[:-1]:
-                share = (remaining_amt * row_counts[c] / weight_total).quantize(Decimal('0.01'))
-                category_amounts[c] += share
-                share_sum += share
-            # last category takes the remainder so shares always sum exactly to remaining_amt
-            category_amounts[remaining_categories[-1]] += remaining_amt - share_sum
+        if pass_count:
+            category_amounts['pass'] += t.ticket_amount or Decimal('0')
 
         ticket_list.append({
             'ticket_id': t.id,
