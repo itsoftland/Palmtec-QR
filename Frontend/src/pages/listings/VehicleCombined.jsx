@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Truck, Bus, Tag, Plus, Eye, Pencil, Trash2, Search, X, ChevronRight } from 'lucide-react';
+import { Truck, Bus, Tag, Plus, Eye, Pencil, Trash2, Search, X, ChevronRight, UserRound } from 'lucide-react';
 import { useModalForm } from '../../assets/js/useModalForm';
 import { submitForm } from '../../assets/js/submitForm';
 import api, { BASE_URL } from '../../assets/js/axiosConfig';
@@ -39,6 +39,10 @@ const getPageNums = (current, total) => {
 
 export default function VehicleCombined() {
 
+  // ── Current user ─────────────────────────────────────────────────────────────
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const isCompanyAdmin = currentUser?.role === 'company_admin';
+
   // ── Navigation ───────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('vehicles');
   const [selectedType, setSelectedType] = useState(null);
@@ -62,6 +66,13 @@ export default function VehicleCombined() {
   const [vehSearch, setVehSearch] = useState('');
   const [vehPage, setVehPage] = useState(1);
   const [deletingVehicleId, setDeletingVehicleId] = useState(null);
+
+  // ── Assign vehicle to user ───────────────────────────────────────────────────
+  const [basicUsers, setBasicUsers] = useState([]);
+  const [assignModal, setAssignModal] = useState(null);
+  const [assignUserId, setAssignUserId] = useState('');
+  const [assignError, setAssignError] = useState('');
+  const [assignBusy, setAssignBusy] = useState(false);
 
   const {
     isModalOpen, setIsModalOpen,
@@ -125,7 +136,18 @@ export default function VehicleCombined() {
   const getVehCount = (typeId) => displayVehicles.filter(v => v.bus_type === typeId).length;
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
-  useEffect(() => { loadBusTypes(); fetchVehicles(); }, []);
+  useEffect(() => { loadBusTypes(); fetchVehicles(); if (isCompanyAdmin) fetchBasicUsers(); }, []);
+
+  const fetchBasicUsers = async () => {
+    try {
+      const res = await api.get(`${BASE_URL}/get_users`);
+      const all = res.data?.data ?? [];
+      setBasicUsers(all.filter(u => u.role === 'company_user' && u.tier === 'basic'));
+    } catch (err) {
+      console.error('Error fetching basic users:', err);
+      setBasicUsers([]);
+    }
+  };
 
   const loadBusTypes = async (force = false) => {
     if (!force) {
@@ -268,6 +290,45 @@ export default function VehicleCombined() {
       );
     } finally {
       setDeletingVehicleId(null);
+    }
+  };
+
+  const openAssignModal = (vehicle) => {
+    const current = basicUsers.find(u => u.assigned_bus === vehicle.id);
+    setAssignModal({ vehicle, currentUser: current || null });
+    setAssignUserId(current ? String(current.id) : '');
+    setAssignError('');
+  };
+
+  const handleAssignSave = async () => {
+    if (!assignUserId) {
+      setAssignError('Please select a user.');
+      return;
+    }
+    setAssignBusy(true);
+    setAssignError('');
+    try {
+      await api.post(`${BASE_URL}/vehicles/${assignModal.vehicle.id}/assign-user`, { user_id: assignUserId });
+      setAssignModal(null);
+      fetchBasicUsers();
+    } catch (err) {
+      setAssignError(err?.response?.data?.error || 'Failed to assign vehicle.');
+    } finally {
+      setAssignBusy(false);
+    }
+  };
+
+  const handleUnassign = async () => {
+    setAssignBusy(true);
+    setAssignError('');
+    try {
+      await api.post(`${BASE_URL}/vehicles/${assignModal.vehicle.id}/unassign-user`);
+      setAssignModal(null);
+      fetchBasicUsers();
+    } catch (err) {
+      setAssignError(err?.response?.data?.error || 'Failed to unassign vehicle.');
+    } finally {
+      setAssignBusy(false);
     }
   };
 
@@ -480,7 +541,7 @@ export default function VehicleCombined() {
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 bg-white z-10">
                       <tr className="border-b border-slate-100">
-                        {['ID', 'Reg. Number', 'Bus Type', 'Status', ''].map(h => (
+                        {['ID', 'Reg. Number', 'Bus Type', 'Status', 'Assigned To', ''].map(h => (
                           <th key={h} className="px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">{h}</th>
                         ))}
                       </tr>
@@ -489,7 +550,7 @@ export default function VehicleCombined() {
                       {vehLoading
                         ? Array.from({ length: 6 }).map((_, i) => (
                           <tr key={i}>
-                            {[40, 140, 120, 70, 60].map((w, j) => (
+                            {[40, 140, 120, 70, 90, 60].map((w, j) => (
                               <td key={j} className="px-5 py-3.5">
                                 <Skeleton className="h-4 rounded" style={{ width: w }} />
                               </td>
@@ -499,7 +560,7 @@ export default function VehicleCombined() {
                         : vehPageItems.length === 0
                           ? (
                             <tr>
-                              <td colSpan={5} className="px-5 py-16 text-center text-slate-400 text-sm">
+                              <td colSpan={6} className="px-5 py-16 text-center text-slate-400 text-sm">
                                 No vehicles found.
                               </td>
                             </tr>
@@ -530,6 +591,34 @@ export default function VehicleCombined() {
                                     ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-100">Deleted</span>
                                     : <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">Active</span>
                                   }
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  {(() => {
+                                    const assignedUser = basicUsers.find(u => u.assigned_bus === item.id);
+                                    if (!isCompanyAdmin) {
+                                      return assignedUser
+                                        ? <span className="text-sm text-slate-600">{assignedUser.username}</span>
+                                        : <span className="text-slate-400 text-sm">—</span>;
+                                    }
+                                    return assignedUser ? (
+                                      <button
+                                        onClick={() => openAssignModal(item)}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors"
+                                      >
+                                        <span>{assignedUser.username}</span>
+                                        <Pencil size={10} />
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => openAssignModal(item)}
+                                        disabled={item.is_deleted}
+                                        title={item.is_deleted ? 'Cannot assign a deleted vehicle' : ''}
+                                        className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-50"
+                                      >
+                                        Assign
+                                      </button>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-5 py-3.5">
                                   <div className="flex items-center justify-end gap-1.5">
@@ -825,6 +914,66 @@ export default function VehicleCombined() {
                 )}
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── ASSIGN VEHICLE MODAL ─────────────────────────────────────────────────── */}
+        <Dialog open={!!assignModal} onOpenChange={(open) => !open && setAssignModal(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-slate-800">
+                <span className="p-1.5 rounded-lg bg-slate-900"><UserRound size={14} className="text-white" /></span>
+                Assign Vehicle to User
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-2">
+              <p className="text-xs text-slate-400 font-mono uppercase">
+                {assignModal?.vehicle?.bus_reg_num}
+              </p>
+
+              {assignError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {assignError}
+                </p>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="text-slate-700">Basic Tier User *</Label>
+                {basicUsers.length === 0 ? (
+                  <p className="text-xs text-slate-400">No basic tier users found.</p>
+                ) : (
+                  <select
+                    value={assignUserId}
+                    onChange={e => setAssignUserId(e.target.value)}
+                    className="w-full h-10 px-3 border border-input rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    autoFocus
+                  >
+                    <option value="">-- Select a user --</option>
+                    {basicUsers.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.username}{u.assigned_bus_reg_num ? ` (currently: ${u.assigned_bus_reg_num})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+                {assignModal?.currentUser && (
+                  <Button type="button" variant="outline" onClick={handleUnassign} disabled={assignBusy}
+                    className="mr-auto text-red-600 border-red-200 hover:bg-red-50">
+                    Unassign
+                  </Button>
+                )}
+                <Button type="button" variant="outline" onClick={() => setAssignModal(null)} className="text-slate-600">
+                  Cancel
+                </Button>
+                <Button type="button" onClick={handleAssignSave} disabled={assignBusy || basicUsers.length === 0}
+                  className="bg-slate-900 hover:bg-slate-700 text-white">
+                  {assignBusy ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
 
