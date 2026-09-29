@@ -227,6 +227,8 @@ urlpatterns = [
     path('etm-devices/<int:device_id>/set-aggregator-tid', device_registry_views.set_aggregator_tid,  name='etm_set_aggregator_tid'),
     path('etm-devices/<int:device_id>/assign-user',    device_registry_views.assign_device_to_user, name='etm_assign_user'),
     path('etm-devices/<int:device_id>/unassign-user',  device_registry_views.unassign_device_from_user, name='etm_unassign_user'),
+    path('vehicles/<int:bus_id>/assign-user',           device_registry_views.assign_bus_to_user, name='vehicle_assign_user'),
+    path('vehicles/<int:bus_id>/unassign-user',         device_registry_views.unassign_bus_from_user, name='vehicle_unassign_user'),
     path('etm-devices/sync-aggregator-tids',               device_registry_views.sync_aggregator_tids, name='etm_sync_aggregator_tids'),
     path('etm-devices/<int:device_id>/delete',          device_registry_views.delete_device,        name='etm_delete'),
 

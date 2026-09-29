@@ -32,7 +32,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ...models import ETMDevice, Company, Dealer, CustomUser, AuditLog, UserRole, UserTier, SettingsProfile
+from ...models import ETMDevice, Company, Dealer, CustomUser, AuditLog, UserRole, UserTier, SettingsProfile, VehicleType
 from ...serializers.devices import ETMDeviceSerializer
 from ...serializers.auth import UserSerializer
 from ...permissions import LicensePermission
@@ -918,6 +918,107 @@ def unassign_device_from_user(request, device_id):
 
     return Response({
         'message': f'Device {device.serial_number} unassigned from {target_user.username}.',
+        'data': UserSerializer(target_user).data,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def assign_bus_to_user(request, bus_id):
+    """
+    Company admin assigns a vehicle/bus to one of their company_user (basic tier) accounts.
+
+    Body: { user_id: <int> }
+    Company admin only — both bus and target user must belong to their company.
+    If the bus is already assigned to a different user, that user is
+    unassigned first (a bus can only be held by one user at a time).
+    """
+    user = request.user
+    if not _is_company_admin(user):
+        return Response({'error': 'Company admin only'}, status=status.HTTP_403_FORBIDDEN)
+    if not user.company_id:
+        return Response({'error': 'No company linked to your account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        bus = VehicleType.objects.get(
+            pk=bus_id,
+            company_id=user.company_id,
+            is_deleted=False,
+        )
+    except VehicleType.DoesNotExist:
+        return Response({'error': 'Vehicle not found in your company'}, status=status.HTTP_404_NOT_FOUND)
+
+    target_user_id = request.data.get('user_id')
+    if not target_user_id:
+        return Response({'error': 'user_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        target_user = CustomUser.objects.get(
+            pk=target_user_id,
+            company_id=user.company_id,
+            role=UserRole.COMPANY_USER,
+        )
+    except CustomUser.DoesNotExist:
+        return Response({'error': 'User not found in your company'}, status=status.HTTP_404_NOT_FOUND)
+
+    if target_user.tier != UserTier.BASIC:
+        return Response({'error': 'Vehicle assignment is only for Basic tier users'}, status=status.HTTP_400_BAD_REQUEST)
+
+    bus.assigned_users.exclude(pk=target_user.pk).update(assigned_bus=None)
+
+    target_user.assigned_bus = bus
+    target_user.save(update_fields=['assigned_bus'])
+
+    log_action(
+        actor=user, action=AuditLog.ActionType.UPDATE,
+        target_model='CustomUser', target_id=target_user.pk,
+        target_display=target_user.username,
+        details={'bus_id': bus.pk, 'bus_reg_num': bus.bus_reg_num},
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'message': f'Vehicle {bus.bus_reg_num} assigned to {target_user.username}.',
+        'data': UserSerializer(target_user).data,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def unassign_bus_from_user(request, bus_id):
+    """
+    Company admin clears a vehicle's current user assignment.
+
+    Company admin only — vehicle must belong to their company.
+    """
+    user = request.user
+    if not _is_company_admin(user):
+        return Response({'error': 'Company admin only'}, status=status.HTTP_403_FORBIDDEN)
+    if not user.company_id:
+        return Response({'error': 'No company linked to your account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        bus = VehicleType.objects.get(pk=bus_id, company_id=user.company_id, is_deleted=False)
+    except VehicleType.DoesNotExist:
+        return Response({'error': 'Vehicle not found in your company'}, status=status.HTTP_404_NOT_FOUND)
+
+    target_user = CustomUser.objects.filter(assigned_bus=bus, company_id=user.company_id).first()
+    if not target_user:
+        return Response({'error': 'Vehicle is not assigned to any user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    target_user.assigned_bus = None
+    target_user.save(update_fields=['assigned_bus'])
+
+    log_action(
+        actor=user, action=AuditLog.ActionType.UPDATE,
+        target_model='CustomUser', target_id=target_user.pk,
+        target_display=target_user.username,
+        details={'bus_id': bus.pk, 'bus_reg_num': bus.bus_reg_num},
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'message': f'Vehicle {bus.bus_reg_num} unassigned from {target_user.username}.',
         'data': UserSerializer(target_user).data,
     }, status=status.HTTP_200_OK)
 

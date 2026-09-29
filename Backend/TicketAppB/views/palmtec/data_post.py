@@ -906,4 +906,4 @@ def get_inspector_report_from_device(request):
     except Exception as e:
         log_inspector.exception("InspectorReport failed raw=%s err=%s", raw, e, extra={'company_id': company_instance.company_id} if company_instance else {})
         print("-------------------------", e)
-        return HttpResponse("ERROR", status=500, content_type="text/plain")
+        return HttpResponse(f"ERROR :- {e}", status=500, content_type="text/plain")

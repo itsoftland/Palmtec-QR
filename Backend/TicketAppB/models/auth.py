@@ -118,6 +118,14 @@ class CustomUser(AbstractUser):
         related_name='allocated_users',
     )
 
+    assigned_bus = models.ForeignKey(
+        'VehicleType',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_users',
+    )
+
     # ── Audit ─────────────────────────────────────────────────────────────────
     # Self-referential: who created this user. Nullable so superadmin (root)
     # and script-created users have no creator. SET_NULL because users are

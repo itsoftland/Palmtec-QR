@@ -8,6 +8,7 @@ class UserSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source='company.company_name', read_only=True)
     dealer_name  = serializers.CharField(source='dealer.dealer_name',  read_only=True)
     allocated_device_serial = serializers.CharField(source='allocated_device.serial_number', read_only=True)
+    assigned_bus_reg_num = serializers.CharField(source='assigned_bus.bus_reg_num', read_only=True)
 
     class Meta:
         model  = CustomUser
@@ -28,6 +29,8 @@ class UserSerializer(serializers.ModelSerializer):
             'dealer_name',
             'allocated_device',
             'allocated_device_serial',
+            'assigned_bus',
+            'assigned_bus_reg_num',
             'is_active',
             'is_verified',
             'created_by',
@@ -41,6 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
             'company_name',
             'dealer_name',
             'allocated_device_serial',
+            'assigned_bus_reg_num',
             'date_joined',
             'last_login',
         ]
