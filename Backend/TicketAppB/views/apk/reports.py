@@ -8,7 +8,9 @@ from rest_framework.pagination import PageNumberPagination
 from zoneinfo import ZoneInfo
 from ...models import TransactionData, TripData, ScheduleData, Stage, ExpenseData, Route, RouteStage, VehicleType, AggregatorTransaction,AggregatorPayoutCallback
 from ...permissions import LicensePermission
-from ..utils import _meets_tier, _TIER_ERROR
+from ..utils import _meets_tier, _TIER_ERROR, _is_basic_tier, _assigned_bus_no
+
+_BUS_ERROR = {'error': 'Not authorized for this bus.'}
 
 PAYMENT_LABELS = {'Cash': 'Cash', 'UPI': 'UPI', 'Card': 'Card'}
 
@@ -26,11 +28,11 @@ class AggregatorTransactionPagination(PageNumberPagination):
 def apk_bus_list(request):
     user = request.user
 
-    buses = list(
-        VehicleType.objects.filter(company=user.company, is_deleted=False)
-        .order_by('bus_reg_num')
-        .values('id', 'bus_reg_num')
-    )
+    buses_qs = VehicleType.objects.filter(company=user.company, is_deleted=False)
+    if _is_basic_tier(user):
+        buses_qs = buses_qs.filter(bus_reg_num=_assigned_bus_no(user))
+
+    buses = list(buses_qs.order_by('bus_reg_num').values('id', 'bus_reg_num'))
     return Response({'buses': buses})
 
 
@@ -47,6 +49,9 @@ def apk_schedules(request):
 
     if not bus_no or not date_str:
         return Response({'error': 'bus_no and date are required'}, status=400)
+
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
 
     schedules = ScheduleData.objects.filter(
         company_code=user.company,
@@ -95,7 +100,10 @@ def apk_dashboard(request):
 
     company_created_date = company.created_at.date()
 
-    if anchor < company_created_date:
+    is_basic = _is_basic_tier(user)
+    assigned_bus_no = _assigned_bus_no(user) if is_basic else None
+
+    if anchor < company_created_date or (is_basic and not assigned_bus_no):
         return Response({
                 'date': date_str,
                 'total_revenue': "0",
@@ -105,13 +113,17 @@ def apk_dashboard(request):
                 'weekly_chart': [],
                 'bus_list': [],
             })
-        
-        
+
+    # Basic-tier users only ever see their own assigned bus — pin every query below
+    # to it instead of the whole company.
+    bus_filter = {'bus_no': assigned_bus_no} if is_basic else {}
+
     # ── Revenue header: closed trips from TripData + open trips from TransactionData ──
     closed_day = TripData.objects.filter(
         company_code=company,
         start_date=date_str,
         is_closed=True,
+        **bus_filter,
     ).aggregate(total=Sum('total_collection'), upi=Sum('upi_ticket_amount'))
 
     # Current: keyed on ticket_date (day money was actually collected)
@@ -129,6 +141,7 @@ def apk_dashboard(request):
         company_code=company,
         schedule_id__start_date=date_str,
         trip_id__is_closed=False,
+        **bus_filter,
     ).aggregate(
         total=Sum('ticket_amount'),
         upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
@@ -145,6 +158,7 @@ def apk_dashboard(request):
             start_date=date_str,
             is_closed=True,
             bus_no__isnull=False,
+            **bus_filter,
         ).values('bus_no').annotate(
             revenue=Sum('total_collection'),
             upi_amt=Sum('upi_ticket_amount'),
@@ -173,6 +187,7 @@ def apk_dashboard(request):
             schedule_id__start_date=date_str,
             trip_id__is_closed=False,
             bus_no__isnull=False,
+            **bus_filter,
         ).values('bus_no').annotate(
             revenue=Sum('ticket_amount'),
             upi_amt=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
@@ -189,6 +204,7 @@ def apk_dashboard(request):
         company_code=company,
         start_date=date_str,
         bus_no__isnull=False,
+        **bus_filter,
     ).values('bus_no', 'is_closed'):
         if r['is_closed']:
             closed_today_buses.add(r['bus_no'])
@@ -197,8 +213,12 @@ def apk_dashboard(request):
 
     running_count = len(running_buses)
 
+    vehicle_qs = VehicleType.objects.filter(company=company, is_deleted=False)
+    if is_basic:
+        vehicle_qs = vehicle_qs.filter(bus_reg_num=assigned_bus_no)
+
     bus_list = []
-    for reg_num in VehicleType.objects.filter(company=company, is_deleted=False).values_list('bus_reg_num', flat=True):
+    for reg_num in vehicle_qs.values_list('bus_reg_num', flat=True):
         closed = closed_bus_rows.get(reg_num, {})
         open_rev = open_bus_rows.get(reg_num, {})
         revenue = (closed.get('revenue') or 0) + (open_rev.get('revenue') or 0)
@@ -230,6 +250,7 @@ def apk_dashboard(request):
             company_code=company,
             start_date__range=[week_start, week_end],
             is_closed=True,
+            **bus_filter,
         ).values('start_date').annotate(
             total=Sum('total_collection'),
             upi=Sum('upi_ticket_amount'),
@@ -256,6 +277,7 @@ def apk_dashboard(request):
             company_code=company,
             schedule_id__start_date__range=[week_start, week_end],
             trip_id__is_closed=False,
+            **bus_filter,
         ).values('schedule_id__start_date').annotate(
             total=Sum('ticket_amount'),
             upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
@@ -298,6 +320,8 @@ def apk_dashboard(request):
     all_vehicle = VehicleType.objects.filter(
         company=company.id
     )
+    if is_basic:
+        all_vehicle = all_vehicle.filter(bus_reg_num=assigned_bus_no)
 
     for bus in all_vehicle:
 
@@ -379,6 +403,9 @@ def apk_trips(request):
     if not bus_no or not schedule_no or not date_str:
         return Response({'error': 'bus_no, schedule_no and date are required'}, status=400)
 
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
+
     # Current: gated only on the trip's own start_date
     # trips = TripData.objects.filter(
     #     company_code=user.company,
@@ -456,6 +483,9 @@ def apk_tickets(request):
 
     if not bus_no or not schedule_no or not trip_no or not date_str:
         return Response({'error': 'bus_no, schedule_no, trip_no and date are required'}, status=400)
+
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
 
     try:
         # Current: gated only on the trip's own start_date
@@ -625,6 +655,9 @@ def apk_passengers(request):
     if not bus_no or not schedule_no or not trip_no or not date_str:
         return Response({'error': 'bus_no, schedule_no, trip_no and date are required'}, status=400)
 
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
+
     try:
         # Current: gated only on the trip's own start_date
         # trip = TripData.objects.get(
@@ -787,6 +820,9 @@ def duty_report(request):
     if not bus_no or not date_str:
         return Response({'error': 'bus_no and date are required'}, status=400)
 
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
+
     trips = TripData.objects.filter(
         bus_no=bus_no,
         start_date=date_str,
@@ -867,6 +903,9 @@ def bus_summary_report(request):
     if not bus_no or not from_date or not to_date:
         return Response({'error': 'bus_no, from_date and to_date are required'}, status=400)
 
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
+
     closed_qs = TripData.objects.filter(
         company_code=user.company,
         bus_no=bus_no,
@@ -944,6 +983,9 @@ def payment_type_report(request):
     if not bus_no or not from_date or not to_date:
         return Response({'error': 'bus_no, from_date and to_date are required'}, status=400)
 
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
+
     want_cash = payment_mode in ('', 'cash')
     want_upi = payment_mode in ('', 'upi')
 
@@ -1020,6 +1062,9 @@ def farewise_report(request):
 
     if not bus_no or not from_date or not to_date:
         return Response({'error': 'bus_no, from_date and to_date are required'}, status=400)
+
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
 
     fares = [
         {
@@ -1107,6 +1152,9 @@ def expense_report(request):
 
     if not bus_no or not from_date or not to_date:
         return Response({'error': 'bus_no, from_date and to_date are required'}, status=400)
+
+    if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
+        return Response(_BUS_ERROR, status=403)
 
     closed_revenue = {
         str(r['start_date']): r['collection'] or 0

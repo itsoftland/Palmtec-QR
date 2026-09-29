@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied, ValidationError as DRFValidationError
 from django.core.cache import cache
-from ..models.auth import UserRole
+from ..models.auth import UserRole, UserTier
 
 # ── Role constants (aliases for the canonical enum) ───────────────────────────
 ROLE_SUPERADMIN    = UserRole.SUPERADMIN
@@ -27,6 +27,18 @@ def _is_company_admin(user):
 
 def _is_superadmin_or_executive(user):
     return user and user.role in (ROLE_SUPERADMIN, ROLE_EXECUTIVE)
+
+# ── Basic-tier scoping (assigned bus/device only) ──────────────────────────────
+def _is_basic_tier(user):
+    return bool(user and user.role == UserRole.COMPANY_USER and user.tier == UserTier.BASIC)
+
+def _assigned_bus_no(user):
+    bus = getattr(user, 'assigned_bus', None)
+    return bus.bus_reg_num if bus else None
+
+def _assigned_device_serial(user):
+    device = getattr(user, 'allocated_device', None)
+    return device.serial_number if device else None
 
 # ── Tier access ───────────────────────────────────────────────────────────────
 _TIER_ORDER = {'basic': 0, 'intermediate': 1, 'premium': 2}
