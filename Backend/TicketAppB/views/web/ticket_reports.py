@@ -215,6 +215,19 @@ def get_all_schedule_data(request):
         for obj in objects:
             obj._trips_count = obj._trips_count  # annotation already on obj
 
+        if objects:
+            pass_counts = defaultdict(int)
+            pass_tickets = TransactionData.objects.filter(
+                company_code=user.company,
+                schedule_id__in=objects,
+                ticket_status=TransactionData.PaymentMode.CASH,
+            ).values_list('schedule_id_id', 'ticket_type', 'pass_number')
+            for schedule_id, ticket_type, pass_number in pass_tickets:
+                if pass_number or (ticket_type is not None and ticket_type & 32):
+                    pass_counts[schedule_id] += 1
+            for obj in objects:
+                obj._pass_count = pass_counts[obj.id]
+
         # Bulk-fetch odometer readings once and attach total_run_km per schedule
         if objects:
             odo_rows = OdometerData.objects.filter(

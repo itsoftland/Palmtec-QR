@@ -265,6 +265,7 @@ function ScheduleRow({ schedule: s, onView, isNew }) {
 function ScheduleDetailModal({ schedule: s, onClose }) {
   const isOpen = s.status === 'open';
   const cashCollection = Number(s.total_collection || 0) - Number(s.upi_total_collection || 0);
+  const passTicketCount = s.pass_count ?? 0;
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -362,6 +363,7 @@ function ScheduleDetailModal({ schedule: s, onClose }) {
             <FieldBlock label="Student"  value={s.st_count} />
             <FieldBlock label="Luggage"  value={s.luggage_count} />
             <FieldBlock label="Physical" value={s.physical_count} />
+            <FieldBlock label="Pass Tickets" value={passTicketCount} />
             <FieldBlock label="Ladies"   value={s.ladies_count} />
             <FieldBlock label="Senior"   value={s.senior_count} />
             <FieldBlock label="Adjust"   value={s.adjust_count} />
@@ -467,9 +469,8 @@ export default function ScheduleDataPage() {
       latestTimestampRef.current = getMaxUpdatedAt(cachedData);
       setIsPolling(true);
       setLastUpdated(new Date());
-    } else {
-      fetchScheduleData(startDate, endDate);
     }
+    fetchScheduleData(startDate, endDate);
   }, []);
 
   useEffect(() => {

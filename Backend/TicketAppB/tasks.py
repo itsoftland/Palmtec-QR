@@ -334,6 +334,8 @@ def process_transaction_data(self, log_id):
             ladies_count = int(_p(25, 0))
             senior_count = int(_p(26, 0))
             total_tickets = full_count + half_count + st_count + phy_count + lugg_count + ladies_count + senior_count
+            ticket_type = int(_p(19)) if _p(19) else None
+            is_pass_ticket = bool(_p(48) or (ticket_type is not None and ticket_type & 32))
 
             raw_status = _p(44, '0')
             ticket_status = (
@@ -453,7 +455,7 @@ def process_transaction_data(self, log_id):
                         total_tickets        = total_tickets,
                         ticket_amount        = Decimal(_p(17, '0')),
                         lugg_amount          = Decimal(_p(18, '0')),
-                        ticket_type          = int(_p(19)) if _p(19) else None,
+                        ticket_type          = ticket_type,
                         adjust_amount        = Decimal(_p(20, '0')),
                         pass_id              = _p(21),
                         pass_number          = _p(48),
@@ -485,6 +487,10 @@ def process_transaction_data(self, log_id):
                         company_code         = company,
                         raw_payload          = log.raw_payload,
                     )
+                    if schedule_obj and ticket_status == TransactionData.PaymentMode.CASH and is_pass_ticket:
+                        ScheduleData.objects.filter(pk=schedule_obj.pk).update(
+                            updated_at=timezone.now()
+                        )
 
             except IntegrityError as ie:
                 log.status = RawDataLog.statusChoices.DUPLICATE

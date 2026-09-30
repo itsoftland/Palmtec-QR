@@ -220,6 +220,7 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
     battery_start = serializers.SerializerMethodField()
     battery_end   = serializers.SerializerMethodField()
     trips_count   = serializers.SerializerMethodField()
+    pass_count    = serializers.SerializerMethodField()
     company_name  = serializers.SerializerMethodField()
     total_run_km  = serializers.SerializerMethodField()
 
@@ -246,6 +247,7 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
             'battery_start',
             'battery_end',
             'trips_count',
+            'pass_count',
             'total_run_km',
             'total_tickets',
             'total_collection',
@@ -311,6 +313,9 @@ class ScheduleDataSerializer(serializers.ModelSerializer):
         if hasattr(obj, '_trips_count'):
             return obj._trips_count
         return obj.trips.count()
+
+    def get_pass_count(self, obj):
+        return getattr(obj, '_pass_count', 0) or 0
 
     def get_company_name(self, obj):
         return obj.company_code.company_name if obj.company_code else None
