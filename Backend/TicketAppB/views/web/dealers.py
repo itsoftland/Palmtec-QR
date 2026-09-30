@@ -728,6 +728,7 @@ def _build_dealer_sync_diff(dealer, auth_data):
             'total_users_allocated':          given['total'],
             'premium_users_allocated':        given['premium'],
             'intermediate_users_allocated':   given['inter'],
+            'basic_users_allocated':          given['basic'],
         },
         'error': error,
     }
