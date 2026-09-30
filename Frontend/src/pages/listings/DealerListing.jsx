@@ -654,6 +654,8 @@ export default function DealerListing() {
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">License</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Licences</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Validity</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Register</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Access</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
@@ -661,10 +663,10 @@ export default function DealerListing() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <TableSkeleton columns={['w-40', 'w-28', 'w-32', 'w-16', 'w-16', 'w-16', 'w-16']} />
+                  <TableSkeleton columns={['w-40', 'w-28', 'w-32', 'w-16', 'w-12', 'w-24', 'w-16', 'w-16', 'w-16']} />
                 ) : filteredDealers.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-10 text-center">
+                    <td colSpan="9" className="px-4 py-10 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Handshake size={20} className="text-slate-300" />
                         <p className="text-sm text-slate-400">{search ? 'No dealers match your search' : 'No dealers found'}</p>
@@ -706,6 +708,23 @@ export default function DealerListing() {
                       ) : (
                         <span className="text-xs text-slate-400">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700 tabular-nums">
+                      {dealer.number_of_licences ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                      {dealer.product_to_date ? (
+                        <>
+                          {dealer.product_from_date && (
+                            <p className="text-slate-400 leading-tight">
+                              {new Date(dealer.product_from_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                          )}
+                          <p className="leading-tight">
+                            to {new Date(dealer.product_to_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </p>
+                        </>
+                      ) : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2 flex-wrap">
