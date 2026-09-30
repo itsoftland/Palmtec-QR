@@ -286,6 +286,20 @@ class Dealer(models.Model):
         return result['total'] or 0
 
     @property
+    def licences_given_to_companies(self):
+        """Sum of number_of_licences allocated to all active companies under this dealer."""
+        from django.db.models import Sum
+        result = Company.objects.filter(
+            dealer=self, is_active=True
+        ).aggregate(total=Sum('number_of_licences'))
+        return result['total'] or 0
+
+    @property
+    def licences_remaining(self):
+        """Licence units dealer can still give to new companies. Never negative."""
+        return max(0, (self.number_of_licences or 0) - self.licences_given_to_companies)
+
+    @property
     def slots_remaining(self):
         """Slots dealer can still promise to new companies. Never negative."""
         return max(0, self.palmtec_count - self.slots_given_to_companies)

@@ -618,6 +618,11 @@ def dealer_dashboard(request):
             'remaining': user_slots['basic'],
         },
         'license_valid_to': str(dealer_obj.product_to_date) if dealer_obj.product_to_date else None,
+        'number_of_licences': {
+            'total':     dealer_obj.number_of_licences or 0,
+            'given':     dealer_obj.licences_given_to_companies,
+            'remaining': dealer_obj.licences_remaining,
+        },
     }
 
     return Response({

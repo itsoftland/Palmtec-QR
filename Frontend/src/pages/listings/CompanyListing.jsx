@@ -183,7 +183,8 @@ const EMPTY = {
   is_active: true,
   user_username: '', user_email: '', user_password: '',
   // dealer path — pool allocation (only sent when role === dealer_admin)
-  palmtec_count: '', total_user_count: '', premium_user_count: '', intermediate_user_count: '',
+  palmtec_count: '', total_user_count: '', premium_user_count: '', intermediate_user_count: '', basic_user_count: '',
+  number_of_licences: '', product_to_date: '',
 };
 
 // ── Helper ─────────────────────────────────────────────────────────────────────
@@ -317,8 +318,11 @@ export default function CompanyListing() {
     const total = parseInt(form.total_user_count) || 0;
     const premium = parseInt(form.premium_user_count) || 0;
     const inter = parseInt(form.intermediate_user_count) || 0;
-    const basic = total - premium - inter;
+    const basic = form.basic_user_count === '' ? total - premium - inter : (parseInt(form.basic_user_count) || 0);
     const errs = {};
+    const licences = parseInt(form.number_of_licences) || 0;
+    if (licences > 0 && palmtec + total > licences)
+      errs.units = `ETM devices + Total users (${palmtec + total}) cannot exceed Total Licence Units (${licences})`;
     if (palmtec > dealerPool.palmtec.remaining)
       errs.palmtec = `Max ${dealerPool.palmtec.remaining} available`;
     if (total > dealerPool.total_users.remaining)
@@ -329,12 +333,30 @@ export default function CompanyListing() {
       errs.inter = `Max ${dealerPool.inter.remaining} available`;
     if (basic < 0)
       errs.basic = 'Total users must be ≥ premium + intermediate';
+    else if (premium + inter + basic !== total)
+      errs.basic = `Premium + Intermediate + Basic (${premium + inter + basic}) must equal Total Users (${total})`;
     else if (basic > dealerPool.basic.remaining)
       errs.basic = `Max ${dealerPool.basic.remaining} basic slots available`;
     return errs;
-  }, [isDealerAdmin, dealerPool, form.palmtec_count, form.total_user_count, form.premium_user_count, form.intermediate_user_count]);
+  }, [isDealerAdmin, dealerPool, form.palmtec_count, form.total_user_count, form.premium_user_count, form.intermediate_user_count, form.basic_user_count, form.number_of_licences]);
 
-  const sec4 = !isDealerAdmin || (!!(parseInt(form.total_user_count) > 0) && Object.keys(poolErrors).length === 0);
+  const licenceDateError = isDealerAdmin && form.product_to_date && (
+    form.product_to_date < new Date().toISOString().slice(0, 10)
+      ? 'Validity cannot be in the past'
+      : (dealerPool?.license_valid_to && form.product_to_date > dealerPool.license_valid_to
+          ? `Cannot exceed your license validity (${dealerPool.license_valid_to})`
+          : '')
+  );
+  const dealerLicenceMax = dealerPool?.number_of_licences?.remaining ?? 0;
+  const licenceCountError = isDealerAdmin && dealerPool && parseInt(form.number_of_licences) > dealerLicenceMax
+    ? `Only ${dealerLicenceMax} licence units remaining`
+    : '';
+  const sec4 = !isDealerAdmin || (
+    !!(parseInt(form.total_user_count) > 0) &&
+    !!(parseInt(form.number_of_licences) > 0) && !licenceCountError &&
+    !!form.product_to_date && !licenceDateError &&
+    Object.keys(poolErrors).length === 0
+  );
   const canSubmit = sec1 && sec2 && sec3 && sec4;
 
   // ── Import fetch ─────────────────────────────────────────────────────────
@@ -383,6 +405,9 @@ export default function CompanyListing() {
         total_user_count: parseInt(form.total_user_count) || 0,
         premium_user_count: parseInt(form.premium_user_count) || 0,
         intermediate_user_count: parseInt(form.intermediate_user_count) || 0,
+        basic_user_count: parseInt(form.basic_user_count) || 0,
+        number_of_licences: parseInt(form.number_of_licences) || 0,
+        product_to_date: form.product_to_date,
       }),
     };
     try {
@@ -640,6 +665,9 @@ export default function CompanyListing() {
       total_user_count: company.total_user_count ?? 0,
       premium_user_count: company.premium_user_count ?? 0,
       intermediate_user_count: company.intermediate_user_count ?? 0,
+      basic_user_count: company.basic_user_count ?? 0,
+      number_of_licences: company.number_of_licences ?? 0,
+      product_to_date: company.product_to_date ? String(company.product_to_date).slice(0, 10) : '',
     });
     setEditingItem(company);
     setModal('view');
@@ -676,8 +704,10 @@ export default function CompanyListing() {
     const total = parseInt(modalForm.total_user_count) || 0;
     const premium = parseInt(modalForm.premium_user_count) || 0;
     const inter = parseInt(modalForm.intermediate_user_count) || 0;
-    const basic = total - premium - inter;
+    const basic = parseInt(modalForm.basic_user_count) || 0;
+    const licences = parseInt(modalForm.number_of_licences) || 0;
     const avail = {
+      licences: (dealerPool.number_of_licences?.remaining ?? 0) + (editingItem.number_of_licences || 0),
       palmtec: dealerPool.palmtec.remaining + (editingItem.palmtec_count || 0),
       total: dealerPool.total_users.remaining + (editingItem.total_user_count || 0),
       premium: dealerPool.premium.remaining + (editingItem.premium_user_count || 0),
@@ -685,14 +715,24 @@ export default function CompanyListing() {
       basic: dealerPool.basic.remaining + ((editingItem.total_user_count || 0) - (editingItem.premium_user_count || 0) - (editingItem.intermediate_user_count || 0)),
     };
     const errs = {};
+    if (licences <= 0) errs.licences = 'Total licence units must be greater than 0';
+    else if (licences > avail.licences) errs.licences = `Max ${avail.licences} licence units available`;
+    if (licences > 0 && palmtec + total > licences)
+      errs.units = `ETM devices + Total users (${palmtec + total}) cannot exceed Total Licence Units (${licences})`;
+    if (!modalForm.product_to_date) errs.date = 'Validity date is required';
+    else if (modalForm.product_to_date !== String(editingItem.product_to_date || '').slice(0, 10)
+      && modalForm.product_to_date < new Date().toISOString().slice(0, 10)) errs.date = 'Validity cannot be in the past';
+    else if (dealerPool.license_valid_to && modalForm.product_to_date > dealerPool.license_valid_to)
+      errs.date = `Validity cannot exceed your license validity (${dealerPool.license_valid_to})`;
     if (palmtec > avail.palmtec) errs.palmtec = `Max ${avail.palmtec} available`;
     if (total > avail.total) errs.total = `Max ${avail.total} available`;
     if (premium > avail.premium) errs.premium = `Max ${avail.premium} available`;
     if (inter > avail.inter) errs.inter = `Max ${avail.inter} available`;
-    if (basic < 0) errs.basic = 'Total users must be ≥ premium + intermediate';
+    if (basic < 0) errs.basic = 'Basic cannot be negative';
+    else if (premium + inter + basic !== total) errs.basic = `Premium + Intermediate + Basic (${premium + inter + basic}) must equal Total Users (${total})`;
     else if (basic > avail.basic) errs.basic = `Max ${avail.basic} basic slots available`;
     return errs;
-  }, [isDealerAdmin, dealerPool, editingItem, modalForm.palmtec_count, modalForm.total_user_count, modalForm.premium_user_count, modalForm.intermediate_user_count]);
+  }, [isDealerAdmin, dealerPool, editingItem, modalForm.palmtec_count, modalForm.total_user_count, modalForm.premium_user_count, modalForm.intermediate_user_count, modalForm.basic_user_count, modalForm.number_of_licences, modalForm.product_to_date]);
 
   const showEditPoolFields = isDealerAdmin && editingItem?.client_type === 'dealer_company';
 
@@ -716,6 +756,9 @@ export default function CompanyListing() {
           total_user_count: parseInt(modalForm.total_user_count) || 0,
           premium_user_count: parseInt(modalForm.premium_user_count) || 0,
           intermediate_user_count: parseInt(modalForm.intermediate_user_count) || 0,
+          basic_user_count: parseInt(modalForm.basic_user_count) || 0,
+          number_of_licences: parseInt(modalForm.number_of_licences) || 0,
+          product_to_date: modalForm.product_to_date,
         }),
       });
       if (res?.status === 200 || res?.status === 201) {
@@ -834,7 +877,8 @@ export default function CompanyListing() {
                   // Button state machine
                   const showRegister = !hasCompanyId;
                   const showAuthenticate = hasCompanyId && !isApproved && !isValidating;
-                  const showSync = hasCompanyId && isApproved && !hasConfigErr;
+                  const isDealerCompany = company.client_type === 'dealer_company';
+                  const showSync = !showRegister && isApproved && !hasConfigErr;
                   const showValidating = isValidating;
 
                   return (
@@ -919,8 +963,9 @@ export default function CompanyListing() {
                             </button>
                           )}
                           {showSync && (
-                            <button onClick={() => handleSyncLicense(company)} disabled={syncing}
-                              className="inline-flex items-center gap-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 cursor-pointer">
+                            <button onClick={() => handleSyncLicense(company)} disabled={syncing || isDealerCompany}
+                              title={isDealerCompany ? 'Dealer-managed company — license is set by the dealer, not synced from the license server' : undefined}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
                               {syncing ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Fetching…</> : <><RefreshCw size={13} /> Sync License</>}
                             </button>
                           )}
@@ -1190,6 +1235,8 @@ export default function CompanyListing() {
                     { name: 'total_user_count', errKey: 'total', label: 'Total Users' },
                     { name: 'premium_user_count', errKey: 'premium', label: 'Premium Users' },
                     { name: 'intermediate_user_count', errKey: 'inter', label: 'Intermediate Users' },
+                    { name: 'basic_user_count', errKey: 'basic', label: 'Basic Users' },
+                    { name: 'number_of_licences', errKey: 'licences', label: 'Total Licence Units' },
                   ].map(({ name, errKey, label }) => (
                     <div key={name} className="space-y-1.5">
                       <label className="text-sm font-medium text-slate-700">{label}</label>
@@ -1204,6 +1251,17 @@ export default function CompanyListing() {
                       />
                     </div>
                   ))}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-slate-700">Validity Till</label>
+                    <input
+                      type="date"
+                      name="product_to_date"
+                      max={dealerPool?.license_valid_to || undefined}
+                      value={modalForm.product_to_date || ''}
+                      onChange={handleModalInputChange}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 bg-white ${editPoolErrors.date ? 'border-red-400 focus:ring-red-300' : 'border-slate-300 focus:ring-slate-400'}`}
+                    />
+                  </div>
                 </div>
                 {Object.keys(editPoolErrors).length > 0 && (
                   <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 text-xs text-red-700">
@@ -1650,7 +1708,7 @@ export default function CompanyListing() {
                       />
                     </div>
                   </Field>
-                  <Field label="Password" required hint="Min 8 chars">
+                  <Field label="Password" required hint="Min 6 chars">
                     <div className="flex gap-0">
                       <span className="inline-flex items-center px-3 text-sm text-slate-500 bg-slate-50 border border-r-0 border-slate-300 rounded-l-lg"><KeyRound size={13} /></span>
                       {/* <input type="text" value={form.user_password} onChange={e => set('user_password', e.target.value)} placeholder="—"
@@ -1704,6 +1762,20 @@ export default function CompanyListing() {
                       <p className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400 border-b border-slate-100">
                         Your Remaining Pool Balance
                       </p>
+                      <div className="grid grid-cols-2 divide-x divide-slate-100 border-b border-slate-100">
+                        <div className="px-4 py-2.5">
+                          <p className="text-[10px] text-slate-400 leading-tight">Total Licences</p>
+                          <p className="text-sm font-bold tabular-nums text-slate-800">{dealerPool.number_of_licences?.remaining ?? '—'} <span className="text-[10px] font-normal text-slate-400">/ {dealerPool.number_of_licences?.total ?? '—'} remaining</span></p>
+                        </div>
+                        <div className="px-4 py-2.5">
+                          <p className="text-[10px] text-slate-400 leading-tight">Valid Till</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            {dealerPool.license_valid_to
+                              ? new Date(dealerPool.license_valid_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                              : '—'}
+                          </p>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-5 divide-x divide-slate-100">
                         {[
                           { label: 'ETM Devices', val: dealerPool.palmtec.remaining, total: dealerPool.palmtec.total },
@@ -1728,6 +1800,33 @@ export default function CompanyListing() {
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {/* Total Licence Units */}
+                    <Field label="Total Licence Units" required hint={dealerPool ? `${dealerLicenceMax} remaining` : 'number_of_licences'}>
+                      <input
+                        type="number" min="1" required
+                        max={dealerPool ? dealerLicenceMax : undefined}
+                        value={form.number_of_licences}
+                        onChange={e => set('number_of_licences', e.target.value.replace(/\D/g, ''))}
+                        placeholder="0"
+                        className={`${inputCls} ${licenceCountError ? 'border-red-400 focus:ring-red-300' : ''}`}
+                      />
+                      {licenceCountError && <p className="mt-1 text-xs text-red-600">{licenceCountError}</p>}
+                      {poolErrors.units && <p className="mt-1 text-xs text-red-600">{poolErrors.units}</p>}
+                    </Field>
+
+                    {/* Validity Till */}
+                    <Field label="Validity Till" required hint={dealerPool?.license_valid_to ? `max ${dealerPool.license_valid_to}` : 'product_to_date'}>
+                      <input
+                        type="date" required
+                        min={new Date().toISOString().slice(0, 10)}
+                        max={dealerPool?.license_valid_to || undefined}
+                        value={form.product_to_date}
+                        onChange={e => set('product_to_date', e.target.value)}
+                        className={`${inputCls} ${licenceDateError ? 'border-red-400 focus:ring-red-300' : ''}`}
+                      />
+                      {licenceDateError && <p className="mt-1 text-xs text-red-600">{licenceDateError}</p>}
+                    </Field>
+
                     {/* ETM Devices */}
                     <Field label="ETM Devices" required hint={dealerPool ? `${dealerPool.palmtec.remaining} remaining` : 'palmtec_count'}>
                       {/* <input
@@ -2118,26 +2217,21 @@ export default function CompanyListing() {
                       />
                       {poolErrors.inter && <p className="mt-1 text-xs text-red-600">{poolErrors.inter}</p>}
                     </Field>
-                  </div>
 
-                  {/* Derived basic count display */}
-                  {(() => {
-                    const total = parseInt(form.total_user_count) || 0;
-                    const premium = parseInt(form.premium_user_count) || 0;
-                    const inter = parseInt(form.intermediate_user_count) || 0;
-                    const basic = total - premium - inter;
-                    return total > 0 ? (
-                      <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs border ${poolErrors.basic
-                        ? 'bg-red-50 border-red-200 text-red-700'
-                        : 'bg-slate-50 border-slate-100 text-slate-600'
-                        }`}>
-                        <span className="font-medium">Basic user slots (derived):</span>
-                        <span className="tabular-nums font-bold">{Math.max(0, basic)}</span>
-                        {dealerPool && <span className="ml-auto text-slate-400">pool remaining: {dealerPool.basic.remaining}</span>}
-                        {poolErrors.basic && <span className="ml-auto text-red-600">{poolErrors.basic}</span>}
-                      </div>
-                    ) : null;
-                  })()}
+                    {/* Basic */}
+                    <Field label="Basic User Slots" required hint={dealerPool ? `${dealerPool.basic.remaining} remaining` : 'basic_user_count'}>
+                      <input
+                        type="number" min="0" max="999" required
+                        name="basic_user_count"
+                        data-label="Basic User Slots"
+                        value={form.basic_user_count}
+                        onChange={e => set('basic_user_count', e.target.value.replace(/\D/g, '').slice(0, 3))}
+                        placeholder="0"
+                        className={`${inputCls} ${poolErrors.basic ? 'border-red-400 focus:ring-red-300' : ''}`}
+                      />
+                      {poolErrors.basic && <p className="mt-1 text-xs text-red-600">{poolErrors.basic}</p>}
+                    </Field>
+                  </div>
 
                   <p className="mt-3 text-xs text-slate-500">
                     Counts deducted from your pool on save and restored if the company is deleted.

@@ -863,12 +863,30 @@ def create_company(request):
             alloc_premium = _safe_int(request.data.get('premium_user_count', 0))
             alloc_inter   = _safe_int(request.data.get('intermediate_user_count', 0))
 
+            alloc_licences = _safe_int(request.data.get('number_of_licences', 0))
+            try:
+                alloc_to_date = datetime.strptime(str(request.data.get('product_to_date') or ''), '%Y-%m-%d').date()
+            except ValueError:
+                alloc_to_date = None
+
+            _raw_basic = request.data.get('basic_user_count')
+            alloc_basic = _safe_int(_raw_basic) if _raw_basic not in (None, '') else alloc_total - alloc_premium - alloc_inter
+
             if alloc_total <= 0:
                 return Response({'error': 'total_user_count must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+            if alloc_licences <= 0:
+                return Response({'error': 'number_of_licences must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not alloc_to_date:
+                return Response({'error': 'product_to_date (validity till, YYYY-MM-DD) is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
             if alloc_premium + alloc_inter > alloc_total:
                 return Response(
                     {'error': 'premium_user_count + intermediate_user_count cannot exceed total_user_count.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if alloc_basic < 0 or alloc_premium + alloc_inter + alloc_basic != alloc_total:
+                return Response(
+                    {'error': 'premium + intermediate + basic user counts must equal total_user_count.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -881,10 +899,29 @@ def create_company(request):
             if dealer.authentication_status != Dealer.AuthStatus.APPROVED:
                 return Response({'error': 'Dealer license is not approved. Cannot create companies.'}, status=status.HTTP_403_FORBIDDEN)
 
+            if alloc_licences > dealer.licences_remaining:
+                return Response(
+                    {'error': f'Total licence units: requested {alloc_licences}, available {dealer.licences_remaining} '
+                              f'of dealer total {dealer.number_of_licences or 0}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if alloc_palmtec + alloc_total > alloc_licences:
+                return Response(
+                    {'error': f'ETM devices + total users ({alloc_palmtec + alloc_total}) cannot exceed '
+                              f'total licence units ({alloc_licences}).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if alloc_to_date < timezone.now().date():
+                return Response({'error': 'Validity date cannot be in the past.'}, status=status.HTTP_400_BAD_REQUEST)
+            if dealer.product_to_date and alloc_to_date > dealer.product_to_date:
+                return Response(
+                    {'error': f'Validity cannot exceed dealer license validity ({dealer.product_to_date}).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Pool validation (live-computed from child companies)
             slots_rem  = dealer.slots_remaining
             user_slots = dealer.users_slots_remaining
-            alloc_basic = alloc_total - alloc_premium - alloc_inter
             errors = []
             if alloc_palmtec > slots_rem:
                 errors.append(f"ETM devices: requested {alloc_palmtec}, available {slots_rem}")
@@ -915,7 +952,8 @@ def create_company(request):
                 basic_user_count=alloc_basic,
                 authentication_status=Company.AuthStatus.APPROVED,
                 product_from_date=dealer.product_from_date,
-                product_to_date=dealer.product_to_date,
+                product_to_date=alloc_to_date,
+                number_of_licences=alloc_licences,
             )
 
             logger.info(
@@ -1186,7 +1224,8 @@ def update_company_details(request, pk):
             return Response({'error': 'You can only update companies under your dealership.'}, status=status.HTTP_403_FORBIDDEN)
 
     # ── Dealer pool allocation update (dealer_admin, dealer_company only) ────────
-    pool_fields = ('palmtec_count', 'total_user_count', 'premium_user_count', 'intermediate_user_count')
+    pool_fields = ('palmtec_count', 'total_user_count', 'premium_user_count', 'intermediate_user_count',
+                   'basic_user_count', 'number_of_licences', 'product_to_date')
     if any(f in request.data for f in pool_fields):
         if not _is_dealer_admin(user) or company.client_type != Company.ClientType.DEALER_COMPANY:
             return Response(
@@ -1203,10 +1242,35 @@ def update_company_details(request, pk):
         new_total   = _pi('total_user_count')
         new_premium = _pi('premium_user_count')
         new_inter   = _pi('intermediate_user_count')
+        if request.data.get('basic_user_count') not in (None, ''):
+            new_basic = _safe_int(request.data.get('basic_user_count'), company.basic_user_count)
+        else:
+            new_basic = new_total - new_premium - new_inter
+        new_licences = _pi('number_of_licences')
+
+        new_to_date = company.product_to_date
+        if request.data.get('product_to_date') not in (None, ''):
+            try:
+                new_to_date = datetime.strptime(str(request.data.get('product_to_date')), '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'error': 'product_to_date must be YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+            if new_to_date != company.product_to_date and new_to_date < timezone.now().date():
+                return Response({'error': 'Validity date cannot be in the past.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if new_premium + new_inter > new_total:
             return Response(
                 {'error': 'premium_user_count + intermediate_user_count cannot exceed total_user_count.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_basic < 0 or new_premium + new_inter + new_basic != new_total:
+            return Response(
+                {'error': 'premium + intermediate + basic user counts must equal total_user_count.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_palmtec + new_total > new_licences:
+            return Response(
+                {'error': f'ETM devices + total users ({new_palmtec + new_total}) cannot exceed '
+                          f'total licence units ({new_licences}).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1238,8 +1302,16 @@ def update_company_details(request, pk):
         avail_total   = user_slots['total']    + company.total_user_count
         avail_premium = user_slots['premium']  + company.premium_user_count
         avail_inter   = user_slots['inter']    + company.intermediate_user_count
+        avail_basic   = user_slots['basic']    + (company.basic_user_count or 0)
+        avail_licences = dealer.licences_remaining + (company.number_of_licences or 0)
 
         errors = []
+        if new_licences > avail_licences:
+            errors.append(f'Total licence units: requested {new_licences}, available {avail_licences}')
+        if new_basic > avail_basic:
+            errors.append(f'Basic users: requested {new_basic}, available {avail_basic}')
+        if new_to_date and dealer.product_to_date and new_to_date > dealer.product_to_date:
+            errors.append(f'Validity cannot exceed dealer license validity ({dealer.product_to_date})')
         if new_palmtec > avail_palmtec:
             errors.append(f'ETM devices: requested {new_palmtec}, available {avail_palmtec}')
         if new_total > avail_total:
@@ -1258,8 +1330,10 @@ def update_company_details(request, pk):
         company.total_user_count        = new_total
         company.premium_user_count      = new_premium
         company.intermediate_user_count = new_inter
-        company.basic_user_count        = new_total - new_premium - new_inter
-        company.save(update_fields=list(pool_fields) + ['basic_user_count'])
+        company.basic_user_count        = new_basic
+        company.number_of_licences      = new_licences
+        company.product_to_date         = new_to_date
+        company.save(update_fields=list(pool_fields))
         logger.info(
             f"Dealer '{user.username}' updated license allocation for company "
             f"'{company.company_name}' (ID: {pk}): palmtec={new_palmtec}, total={new_total}, "
@@ -1803,6 +1877,12 @@ def sync_company_license(request, pk):
     except Company.DoesNotExist:
         return Response({'error': 'Company not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    if company.client_type == Company.ClientType.DEALER_COMPANY:
+        return Response(
+            {'error': 'License sync is not available for dealer-managed companies.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     # Access control
     if _is_company_admin(user):
         if not user.company or user.company_id != company.id:
@@ -1844,6 +1924,12 @@ def sync_company_license_confirm(request, pk):
         company = Company.objects.get(pk=pk)
     except Company.DoesNotExist:
         return Response({'error': 'Company not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if company.client_type == Company.ClientType.DEALER_COMPANY:
+        return Response(
+            {'error': 'License sync is not available for dealer-managed companies.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     if _is_company_admin(user):
         if not user.company or user.company_id != company.id:
