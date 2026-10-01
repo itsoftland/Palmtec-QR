@@ -603,6 +603,8 @@ def apk_tickets(request):
             'from_stage': stage_map.get(t.from_stage_id_id, str(t.from_stage) if t.from_stage is not None else None),
             'to_stage': stage_map.get(t.to_stage_id_id, str(t.to_stage) if t.to_stage is not None else None),
             'amount': str(t.ticket_amount),
+            'refund_amount': str(t.refund_amount),
+            'refund_status': t.refund_status,
             'payment_mode': PAYMENT_LABELS.get(t.ticket_status, 'Unknown'),
             'ticket_type': t.ticket_type,
             'full_count': t.full_count,
