@@ -9,12 +9,12 @@ request.user  → the authenticated CustomUser instance
 request.auth  → SessionInfo(session_uid, device_type)
 
 Per-request cost (normal path):
-  1 x Redis GET  (cache hit → user_id)
-  1 x DB  GET    (User with select_related company/dealer — hot PK row)
+    1 x Redis GET  (cache hit → user_id)
+    1 x DB  GET    (active UserSession with user/company/dealer joined)
   1 x Redis SET  (TTL reset, only if >60s since last reset — see _maybe_extend_ttl)
 
 On Redis miss (cold start, cache eviction, Redis restart):
-  1 x DB  GET    (UserSession with is_active=True)
+    1 x DB  GET    (active UserSession with user/company/dealer joined)
   1 x Redis SET  (repopulate cache)
   1 x DB  GET    (User with select_related)
 
@@ -25,7 +25,6 @@ On force-logout or natural expiry:
 from collections import namedtuple
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
@@ -40,8 +39,6 @@ from .models import UserSession, UserRole, UserTier
 #                idle timeout without an extra DB or Redis read.
 SessionInfo = namedtuple('SessionInfo', ['session_uid', 'device_type'])
 
-
-User=get_user_model()
 
 COOKIE_NAME = 'pqr_session'
 _CACHE_KEY_PREFIX = 'pqr:session:'
@@ -197,11 +194,21 @@ class SessionAuthentication(BaseAuthentication):
                 return None
 
             try:
-                user = User.objects.select_related('company', 'dealer').get(
-                    pk=int(cached_user_id_str),
+                session = UserSession.objects.select_related(
+                    'user', 'user__company', 'user__dealer',
+                ).get(
+                    session_uid=session_uid,
+                    user_id=int(cached_user_id_str),
                     is_active=True,
                 )
-            except (User.DoesNotExist, ValueError):
+                user = session.user
+            except (UserSession.DoesNotExist, ValueError):
+                set_session_revoked(session_uid)
+                delete_session_cache(session_uid)
+                return None
+
+            if not user.is_active:
+                set_session_revoked(session_uid)
                 delete_session_cache(session_uid)
                 return None
 
