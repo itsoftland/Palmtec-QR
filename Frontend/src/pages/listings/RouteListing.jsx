@@ -1309,8 +1309,8 @@ export default function RouteListing() {
                           }}
                           onKeyDown={e => {
                             if (e.key === 'Enter') {
-                              if (stageInput.stage_name.length < 3) {
-                                window.alert('Stage name must be at least 3 characters.');
+                              if (stageInput.stage_name.length < 1) {
+                                window.alert('Stage name must be at least 1 character.');
                                 return;
                               }
                               saveStageEntry();
