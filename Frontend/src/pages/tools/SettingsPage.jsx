@@ -287,6 +287,44 @@ function validateRequiredFields(formData, isDevice) {
     .filter(([name]) => formData[name] === '' || formData[name] === null || formData[name] === undefined);
 }
 
+// Backend DecimalField/IntegerField reject '' and '.' ("A valid number is required").
+// Hidden/optional numeric inputs can be blank, so normalise before sending.
+const DECIMAL_FIELDS = [
+  'half_per', 'con_per', 'phy_per', 'round_amt', 'luggage_unit_rate',
+  'st_max_amt', 'st_min_con',
+];
+const INTEGER_FIELDS = [
+  'st_roundoff_amt', 'stage_updation_msg', 'default_stage',
+  'ladies_ratio', 'senior_ratio', 'language_option', 'report_font',
+];
+
+function buildPayload(formData, isDevice) {
+  const out = { ...formData };
+  if (!isDevice) {
+    DECIMAL_FIELDS.forEach(k => {
+      if (!(k in out)) return;
+      const n = parseFloat(out[k]);
+      out[k] = Number.isFinite(n) ? String(n) : '0';
+    });
+  } else {
+    // Profile: half/con/phy/round/luggage are DecimalFields; st_* are CharFields
+    DECIMAL_FIELDS.filter(k => !k.startsWith('st_')).forEach(k => {
+      const n = parseFloat(out[k]);
+      out[k] = Number.isFinite(n) ? String(n) : '0';
+    });
+    ['st_max_amt', 'st_ratio', 'st_min_amt'].forEach(k => {
+      if (out[k] === '' || out[k] == null) out[k] = '0';
+    });
+  }
+  INTEGER_FIELDS.forEach(k => {
+    if (!(k in out) || out[k] === undefined) return;
+    const n = parseInt(out[k], 10);
+    out[k] = Number.isFinite(n) ? n : 0;
+  });
+  Object.keys(out).forEach(k => { if (out[k] === undefined) delete out[k]; });
+  return out;
+}
+
 // ── Shared Settings Form Sections ─────────────────────────────────────────────
 // Used by CompanySettingsTab and profile editor.
 
@@ -439,7 +477,7 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
           <SettToggle label="ST Roundoff" checked={!!formData.st_roundoff_enable} onChange={tog('st_roundoff_enable')} />
           {formData.st_roundoff_enable && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pl-1 pt-1 border-l-2 border-slate-200">
-              <ConstrainedField label="Roundoff Amount (paise)" name="st_roundoff_amt" value={formData.st_roundoff_amt} onChange={onChange} maxLen={3} allowDecimal placeholder="e.g. 0" loading={loading} error={err('st_roundoff_amt')} />
+              <ConstrainedField label="Roundoff Amount (paise)" name="st_roundoff_amt" value={formData.st_roundoff_amt} onChange={onChange} maxLen={3} placeholder="e.g. 0" loading={loading} error={err('st_roundoff_amt')} />
             </div>
           )}
         </div>
@@ -530,7 +568,7 @@ function CompanySettingsTab({ setHeaderAction }) {
     setFieldErrors(EMPTY_SET);
     setSaving(true);
     try {
-      const res = await api.put(`${BASE_URL}/masterdata/settings`, formData);
+      const res = await api.put(`${BASE_URL}/masterdata/settings`, buildPayload(formData, false));
       if (res?.status === 200) {
         setFormData(prev => ({ ...EMPTY_COMPANY_FORM, ...res.data?.data, ...prev, ...res.data?.data }));
         return true;
@@ -635,11 +673,12 @@ function ProfilesTab({ setHeaderAction }) {
     setFieldErrors(EMPTY_SET);
     setSaving(true);
     try {
+      const payload = buildPayload(formData, true);
       let res;
       if (editingId === 'new') {
-        res = await api.post(`${BASE_URL}/masterdata/settings-profiles/create`, formData);
+        res = await api.post(`${BASE_URL}/masterdata/settings-profiles/create`, payload);
       } else {
-        res = await api.put(`${BASE_URL}/masterdata/settings-profiles/${editingId}`, formData);
+        res = await api.put(`${BASE_URL}/masterdata/settings-profiles/${editingId}`, payload);
       }
       if (res?.status === 200 || res?.status === 201) {
         fetchProfiles();
