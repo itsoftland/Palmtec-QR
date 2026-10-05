@@ -1,12 +1,14 @@
 import datetime
+from collections import defaultdict
 from decimal import Decimal
 from rest_framework.response import Response
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, Max
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from zoneinfo import ZoneInfo
-from ...models import TransactionData, TripData, ScheduleData, Stage, ExpenseData, Route, RouteStage, VehicleType, AggregatorTransaction,AggregatorPayoutCallback
+from ...models import TransactionData, TripData, ScheduleData, Stage, ExpenseData, Route, RouteStage, VehicleType, AggregatorTransaction,AggregatorPayoutCallback, OdometerData
+from ...serializers.transactions import ScheduleDataSerializer
 from ...permissions import LicensePermission
 from ..utils import _meets_tier, _TIER_ERROR, _is_basic_tier, _assigned_bus_no
 
@@ -903,12 +905,8 @@ def bus_summary_report(request):
         is_closed=True,
     ).values('start_date').annotate(
         revenue=Sum('total_collection'),
-        distance=Sum('total_km'),
     )
-    closed_map = {
-        str(r['start_date']): {'revenue': r['revenue'] or 0, 'distance': r['distance'] or 0}
-        for r in closed_qs
-    }
+    closed_map = {str(r['start_date']): r['revenue'] or 0 for r in closed_qs}
 
     open_revenue = {
         str(r['ticket_date']): r['collection'] or 0
@@ -920,33 +918,39 @@ def bus_summary_report(request):
         ).values('ticket_date').annotate(collection=Sum('ticket_amount'))
     }
 
-    open_distance = {}
-    for trip in TripData.objects.filter(
+    # Distance = sum of odometer run km (end - start) of every schedule the bus
+    # ran that day, same lookup as the web schedule report.
+    schedules = list(ScheduleData.objects.filter(
         company_code=user.company,
         bus_no=bus_no,
         start_date__range=[from_date, to_date],
-        is_closed=False,
-        route_id__isnull=False,
-    ).select_related('route_id'):
-        last = TransactionData.objects.filter(
+    ).values('palmtec_id', 'schedule_no', 'start_date', 'bus_no', 'start_time'))
+    readings = defaultdict(list)
+    if schedules:
+        for pid, sno, sdate, bus, stime, start_r, end_r in OdometerData.objects.filter(
             company_code=user.company,
-            trip_id=trip,
-        ).order_by('-ticket_time').values('to_stage_id_id').first()
-        if last and last['to_stage_id_id'] is not None:
-            try:
-                rs = RouteStage.objects.get(id=last['to_stage_id_id'])
-                date_key = str(trip.start_date)
-                open_distance[date_key] = open_distance.get(date_key, 0) + (rs.distance or 0)
-            except RouteStage.DoesNotExist:
-                pass
+            bus_no=bus_no,
+            palmtec_id__in={s['palmtec_id'] for s in schedules},
+            schedule_no__in={s['schedule_no'] for s in schedules},
+            start_date__in={s['start_date'] for s in schedules},
+        ).values_list('palmtec_id', 'schedule_no', 'start_date', 'bus_no',
+                      'start_time', 'start_reading', 'end_reading'):
+            readings[ScheduleDataSerializer.odometer_key(pid, sno, sdate, bus)].append(
+                (stime, start_r, end_r))
+    distance_map = defaultdict(float)
+    for sc in schedules:
+        key = ScheduleDataSerializer.odometer_key(
+            sc['palmtec_id'], sc['schedule_no'], sc['start_date'], sc['bus_no'])
+        distance_map[str(sc['start_date'])] += ScheduleDataSerializer.run_km_for_time(
+            readings.get(key, []), sc['start_time'])
 
-    all_dates = sorted(set(closed_map.keys()) | set(open_revenue.keys()) | set(open_distance.keys()))
+    all_dates = sorted(set(closed_map.keys()) | set(open_revenue.keys()) | set(distance_map.keys()))
 
     rows = [
         {
             'date': date,
-            'revenue': str((closed_map.get(date, {}).get('revenue', 0)) + open_revenue.get(date, 0)),
-            'distance': str((closed_map.get(date, {}).get('distance', 0)) + open_distance.get(date, 0)),
+            'revenue': str(closed_map.get(date, 0) + open_revenue.get(date, 0)),
+            'distance': str(round(distance_map.get(date, 0), 2)),
         }
         for date in all_dates
     ]
