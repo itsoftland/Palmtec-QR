@@ -622,6 +622,22 @@ def create_route_wizard(request):
         if not stage_data.get('stage') and not str(stage_data.get('stage_name', '')).strip():
             return Response({'message': f'Stage entry #{idx + 1} is missing a name.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # A stage can appear only once per route (unique route+stage constraint).
+    seen_ids, seen_names = set(), set()
+    for idx, stage_data in enumerate(stages_data):
+        stage_id = stage_data.get('stage')
+        stage_name = str(stage_data.get('stage_name', '')).strip()
+        name_key = stage_name.lower()
+        if (stage_id and stage_id in seen_ids) or (not stage_id and name_key in seen_names):
+            return Response(
+                {'message': f'Duplicate stage "{stage_name or stage_id}" (entry #{idx + 1}). Each stage can appear only once in a route.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if stage_id:
+            seen_ids.add(stage_id)
+        if stage_name:
+            seen_names.add(name_key)
+
     try:
         fare_type = int(fare_type_raw)
     except (ValueError, TypeError):
