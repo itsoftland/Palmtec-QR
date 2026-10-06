@@ -1424,7 +1424,7 @@ export default function DealerListing() {
                     />
                   </div>
                 </Field><br />
-                <Field label="Temporary Password" required hint="Min 8 chars" warnHint={form.user_password.length > 0 && form.user_password.length < 8}>
+                <Field label="Temporary Password" required hint="Min 6 chars" warnHint={form.user_password.length > 0 && form.user_password.length < 6}>
                   <div className="flex gap-0">
                     <span className="inline-flex items-center px-3 text-sm text-slate-500 bg-slate-50 border border-r-0 border-slate-300 rounded-l-lg"><KeyRound size={13} /></span>
                     {/* <input type="text" value={form.user_password} onChange={e => set('user_password', e.target.value)} placeholder="—"
