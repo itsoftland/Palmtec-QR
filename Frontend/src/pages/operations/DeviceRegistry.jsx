@@ -136,11 +136,16 @@ export default function DeviceRegistry() {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Devices");
     ws.getColumn(1).width = 24;
+    ws.getColumn(2).width = 24;
+    ws.getColumn(3).width = 24;
     ws.mergeCells("A1:Z1");
     ws.getCell("A1").value = "Note: Enter the allocated serial number in the Serial Number column, with one serial number per row.";
     ws.getCell("A1").font = { italic: true, color: { argb: "FF808080" } };
-    ws.getCell("A2").value = "serial_number";
-    ws.getCell("A2").font = { bold: true };
+    ["serial_number", "mac_address", "scert_code"].forEach((h, i) => {
+      const cell = ws.getCell(2, i + 1);
+      cell.value = h;
+      cell.font = { bold: true };
+    });
     const buf = await wb.xlsx.writeBuffer();
     const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
     const a = document.createElement("a");
