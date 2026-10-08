@@ -5,6 +5,7 @@ from .views.apk import apk_upload as apk_upload_views
 from .views.apk import master_send as apk_download_views
 from .views import setup_data as setup_data_views
 from .views.utils import require_tier_for_apk, _PREMIUM_TIER_ERROR
+from .views.apk import tamper 
 
 # Data-transfer endpoints (device master-data download + .DAT upload) require
 # Premium tier when reached via the APK. Wrapped only here, not in urls.py, so
@@ -65,5 +66,9 @@ urlpatterns = [
 
     # device data download (data transfer — Premium tier required on the APK)
     # path('download/device-data', _premium(apk_upload_views.downloadDeviceData), name='download_device_data'),
+
+
+    # tamper
+    path('allocated-devices/', tamper.allocated_device_list, name='apk_allocated_device_list')
 
 ]
