@@ -126,37 +126,66 @@ class DeviceUploadView(APIView):
         if header_row_idx is None:
             return Response({'error': 'Column "serial_number" not found in header row'}, status=status.HTTP_400_BAD_REQUEST)
 
-        serials = []
-        for row in rows[header_row_idx + 1:]:
-            val = row[col_idx] if col_idx < len(row) else None
-            if val is not None and str(val).strip():
-                serials.append(str(val).strip())
+        header = [str(h or '').strip().lower() for h in rows[header_row_idx]]
+        mac_idx = header.index('mac_address') if 'mac_address' in header else None
+        scert_idx = header.index('scert_code') if 'scert_code' in header else None
 
-        if not serials:
+        def _cell(row, idx):
+            if idx is None or idx >= len(row):
+                return None
+            val = row[idx]
+            val = str(val).strip() if val is not None else ''
+            return val or None
+
+        # serial -> (mac, scert); first occurrence wins, order preserved
+        entries = {}
+        for row in rows[header_row_idx + 1:]:
+            serial = _cell(row, col_idx)
+            if serial and serial not in entries:
+                mac = _cell(row, mac_idx)
+                entries[serial] = (mac.upper() if mac else None, _cell(row, scert_idx))
+
+        if not entries:
             return Response({'error': 'No serial numbers found in file'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Deduplicate within the file preserving order
-        serials = list(dict.fromkeys(serials))
-
+        serials = list(entries)
         existing = set(
             ETMDevice.objects.filter(serial_number__in=serials).values_list('serial_number', flat=True)
         )
         new_serials = [s for s in serials if s not in existing]
 
-        ETMDevice.objects.bulk_create([
-            ETMDevice(
+        # mac_address / scert_code are unique: skip rows that clash with the DB or earlier rows
+        file_macs = [entries[s][0] for s in new_serials if entries[s][0]]
+        file_scerts = [entries[s][1] for s in new_serials if entries[s][1]]
+        used_macs = set(ETMDevice.objects.filter(mac_address__in=file_macs).values_list('mac_address', flat=True))
+        used_scerts = set(ETMDevice.objects.filter(scert_code__in=file_scerts).values_list('scert_code', flat=True))
+
+        to_create, conflicts = [], []
+        for s in new_serials:
+            mac, scert = entries[s]
+            if (mac and mac in used_macs) or (scert and scert in used_scerts):
+                conflicts.append(s)
+                continue
+            if mac:
+                used_macs.add(mac)
+            if scert:
+                used_scerts.add(scert)
+            to_create.append(ETMDevice(
                 serial_number=s,
+                mac_address=mac,
+                scert_code=scert,
                 device_type=ETMDevice.DeviceType.ETM,
                 allocation_status=ETMDevice.AllocationStatus.STOCK,
                 created_by=user,
-            )
-            for s in new_serials
-        ])
+            ))
+
+        ETMDevice.objects.bulk_create(to_create)
+        new_serials = [d.serial_number for d in to_create]
 
         log_action(
             actor=user, action=AuditLog.ActionType.SERIAL_UPLOAD,
             target_model='ETMDevice',
-            details={'created': len(new_serials), 'skipped': len(existing)},
+            details={'created': len(new_serials), 'skipped': len(existing), 'conflicts': len(conflicts)},
             ip_address=request.META.get('REMOTE_ADDR'),
         )
 
@@ -166,6 +195,7 @@ class DeviceUploadView(APIView):
             'created': len(new_serials),
             'skipped': len(existing),
             'skipped_serials': sorted(existing),
+            'conflicts': conflicts,
         }, status=status.HTTP_201_CREATED)
 
 
