@@ -576,28 +576,33 @@ def apk_tickets(request):
         'senior': 'senior_total_amount',
     }
     category_amounts = {'full': Decimal('0'), 'half': Decimal('0'), 'st': Decimal('0'), 'phy': Decimal('0'),
-                         'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0')}
+                         'lugg': Decimal('0'), 'ladies': Decimal('0'), 'senior': Decimal('0'), 'pass': Decimal('0'),
+                         'adjust': Decimal('0')}
 
     ticket_list = []
     for t in qs:
         # TransactionData has no pass_count column — pass_number presence or ticket_type 32 marks a pass ticket.
         pass_count = 1 if (t.pass_number or t.ticket_type == 32) else 0
 
-        totals['full'] += t.full_count or 0
-        totals['half'] += t.half_count or 0
-        totals['st'] += t.st_count or 0
-        totals['phy'] += t.phy_count or 0
-        totals['lugg'] += t.lugg_count or 0
-        totals['ladies'] += t.ladies_count or 0
-        totals['senior'] += t.senior_count or 0
-        totals['pass'] += pass_count
+        # refunded ticket (refund_status == 1): subtract its counts and amounts from totals
+        sign = -1 if t.refund_status == 1 else 1
+
+        totals['full'] += sign * (t.full_count or 0)
+        totals['half'] += sign * (t.half_count or 0)
+        totals['st'] += sign * (t.st_count or 0)
+        totals['phy'] += sign * (t.phy_count or 0)
+        totals['lugg'] += sign * (t.lugg_count or 0)
+        totals['ladies'] += sign * (t.ladies_count or 0)
+        totals['senior'] += sign * (t.senior_count or 0)
+        totals['pass'] += sign * pass_count
 
         for k, f in CATEGORY_FIELD.items():
-            category_amounts[k] += getattr(t, f) or Decimal('0')
-        category_amounts['lugg'] += t.lugg_amount or Decimal('0')
+            category_amounts[k] += sign * (getattr(t, f) or Decimal('0'))
+        category_amounts['lugg'] += sign * (t.lugg_amount or Decimal('0'))
+        category_amounts['adjust'] += sign * (t.adjust_amount or Decimal('0'))
 
         if pass_count:
-            category_amounts['pass'] += t.ticket_amount or Decimal('0')
+            category_amounts['pass'] += sign * (t.ticket_amount or Decimal('0'))
 
         ticket_list.append({
             'ticket_id': t.id,
@@ -605,6 +610,7 @@ def apk_tickets(request):
             'from_stage': stage_map.get(t.from_stage_id_id, str(t.from_stage) if t.from_stage is not None else None),
             'to_stage': stage_map.get(t.to_stage_id_id, str(t.to_stage) if t.to_stage is not None else None),
             'amount': str(t.ticket_amount),
+            'adjust_amount': str(t.adjust_amount),
             'refund_amount': str(t.refund_amount),
             'refund_status': t.refund_status,
             'payment_mode': PAYMENT_LABELS.get(t.ticket_status, 'Unknown'),
