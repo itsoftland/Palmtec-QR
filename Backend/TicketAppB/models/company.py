@@ -396,6 +396,11 @@ class ETMDevice(models.Model):
         # INACTIVE removed — decommissioning is now handled by is_active=False
 
     serial_number = models.CharField(max_length=100, unique=True, db_index=True)
+
+    mac_address = models.CharField(max_length=100, null=True, blank=True, unique=True, db_index=True)
+
+    scert_code = models.CharField(max_length=10, null=True, unique=True)
+    
     device_type   = models.CharField(
         max_length=20,
         choices=DeviceType.choices,
