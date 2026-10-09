@@ -2,7 +2,7 @@ import datetime
 from collections import defaultdict
 from decimal import Decimal
 from rest_framework.response import Response
-from django.db.models import Q, Sum, Count, Max
+from django.db.models import Q, Sum, Count, Max, F, Case, When, IntegerField
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
@@ -703,6 +703,8 @@ def apk_passengers(request):
 
     # ── Header ────────────────────────────────────────────────────────────────
     status = 'open' if not trip.is_closed else 'closed'
+    # Refund tickets (refund_status=1) reduce collection by their refund_amount.
+    refund_total = qs.filter(refund_status=1).aggregate(t=Sum('refund_amount'))['t'] or 0
     if status == 'open':
         last_ticket = qs.order_by('-ticket_time').values('to_stage_id_id', 'passenger_count').first()
         if last_ticket and last_ticket['to_stage_id_id']:
@@ -716,22 +718,34 @@ def apk_passengers(request):
         passengers_in_bus = last_ticket['passenger_count'] if last_ticket else None
 
         live = qs.aggregate(
-            total=Sum('ticket_amount'),
-            upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
+            total=Sum('ticket_amount', filter=~Q(refund_status=1)),
         )
-        total_collection = live['total'] or 0
+        total_collection = (live['total'] or 0) - refund_total
     else:
         current_stage = None
         passengers_in_bus = None
-        total_collection = trip.total_collection or 0
+        total_collection = (trip.total_collection or 0) - refund_total
 
     # ── Passenger totals ──────────────────────────────────────────────────────
-    agg = qs.aggregate(
-        full=Sum('full_count'), half=Sum('half_count'),
-        st=Sum('st_count'), phy=Sum('phy_count'),
-        lugg=Sum('lugg_count'), ladies=Sum('ladies_count'), senior=Sum('senior_count'),
+    # Refund ticket (refund_status=1) subtracts its counts; same rule as the ticket report.
+    sign = Case(When(refund_status=1, then=-1), default=1, output_field=IntegerField())
+    net_qs = qs.annotate(
+        n_full=F('full_count') * sign, n_half=F('half_count') * sign,
+        n_st=F('st_count') * sign, n_phy=F('phy_count') * sign,
+        n_lugg=F('lugg_count') * sign, n_ladies=F('ladies_count') * sign,
+        n_senior=F('senior_count') * sign,
+    )
+    agg = net_qs.aggregate(
+        full=Sum('n_full'), half=Sum('n_half'),
+        st=Sum('n_st'), phy=Sum('n_phy'),
+        lugg=Sum('n_lugg'), ladies=Sum('n_ladies'), senior=Sum('n_senior'),
     )
     passenger_totals = {k: v or 0 for k, v in agg.items()}
+    # No pass_count column: pass_number present or ticket_type 32 marks a pass ticket.
+    pass_qs = qs.filter(Q(ticket_type=32) | (Q(pass_number__isnull=False) & ~Q(pass_number='')))
+    passenger_totals['pass'] = (
+        pass_qs.exclude(refund_status=1).count() - pass_qs.filter(refund_status=1).count()
+    )
 
     # ── Stage table: keyed by RouteStage PK (from_stage_id_id / to_stage_id_id) ──
     empty = {'f': 0, 'h': 0, 'st': 0, 'ph': 0, 'lugg': 0, 'sr': 0, 'ld': 0}
@@ -742,10 +756,10 @@ def apk_passengers(request):
             'st': r['st'] or 0, 'ph': r['phy'] or 0,
             'lugg': r['lugg'] or 0, 'sr': r['senior'] or 0, 'ld': r['ladies'] or 0,
         }
-        for r in qs.values('from_stage_id_id').annotate(
-            full=Sum('full_count'), half=Sum('half_count'),
-            st=Sum('st_count'), phy=Sum('phy_count'),
-            lugg=Sum('lugg_count'), senior=Sum('senior_count'), ladies=Sum('ladies_count'),
+        for r in net_qs.values('from_stage_id_id').annotate(
+            full=Sum('n_full'), half=Sum('n_half'),
+            st=Sum('n_st'), phy=Sum('n_phy'),
+            lugg=Sum('n_lugg'), senior=Sum('n_senior'), ladies=Sum('n_ladies'),
         )
         if r['from_stage_id_id'] is not None
     }
@@ -756,10 +770,10 @@ def apk_passengers(request):
             'st': r['st'] or 0, 'ph': r['phy'] or 0,
             'lugg': r['lugg'] or 0, 'sr': r['senior'] or 0, 'ld': r['ladies'] or 0,
         }
-        for r in qs.values('to_stage_id_id').annotate(
-            full=Sum('full_count'), half=Sum('half_count'),
-            st=Sum('st_count'), phy=Sum('phy_count'),
-            lugg=Sum('lugg_count'), senior=Sum('senior_count'), ladies=Sum('ladies_count'),
+        for r in net_qs.values('to_stage_id_id').annotate(
+            full=Sum('n_full'), half=Sum('n_half'),
+            st=Sum('n_st'), phy=Sum('n_phy'),
+            lugg=Sum('n_lugg'), senior=Sum('n_senior'), ladies=Sum('n_ladies'),
         )
         if r['to_stage_id_id'] is not None
     }
