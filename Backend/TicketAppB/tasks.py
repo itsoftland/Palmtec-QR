@@ -1539,29 +1539,31 @@ _sweep_logger = _logging.getLogger(__name__)
 @shared_task
 def sweep_stale_sessions():
     """
-    Reconcile DB with Redis. Any UserSession with is_active=True whose Redis
-    cache key no longer exists has expired naturally (TTL elapsed) or was
-    force-logged out. Mark those sessions inactive in the DB so the admin
-    session listing stays accurate.
+    Mark UserSessions inactive once idle longer than their device timeout.
+    Idle age comes from the DB (last_seen_at, falling back to created_at), NOT
+    from Redis key presence: a Redis eviction/restart/flush must not kill a
+    live session (the auth backend repopulates the cache from the DB).
+    last_seen_at is debounced to 5 min, so a margin is added.
     """
-    from django.core.cache import cache
+    from datetime import timedelta
+    from django.db.models import Q
+    from django.utils import timezone
     from .models import UserSession
-    from .authentication import _CACHE_KEY_PREFIX
+    from .authentication import get_session_timeout
 
-    active_sessions = UserSession.objects.filter(is_active=True).values_list(
-        'session_uid', flat=True,
-    )
+    margin = 300
+    now = timezone.now()
+    updated = 0
+    for device_types, in_filter in ((('android', 'ios'), True), (('android', 'ios'), False)):
+        qs = UserSession.objects.filter(is_active=True)
+        qs = qs.filter(device_type__in=device_types) if in_filter else qs.exclude(device_type__in=device_types)
+        timeout = get_session_timeout(device_types[0] if in_filter else None)
+        cutoff = now - timedelta(seconds=timeout + margin)
+        updated += qs.filter(
+            Q(last_seen_at__lt=cutoff) | Q(last_seen_at__isnull=True, created_at__lt=cutoff)
+        ).update(is_active=False)
 
-    stale_ids = []
-    for session_uid in active_sessions:
-        key = f'{_CACHE_KEY_PREFIX}{session_uid}'
-        if not cache.get(key):
-            stale_ids.append(session_uid)
-
-    if stale_ids:
-        updated = UserSession.objects.filter(session_uid__in=stale_ids).update(
-            is_active=False,
-        )
+    if updated:
         _sweep_logger.info(f'sweep_stale_sessions: marked {updated} sessions inactive.')
 
 
