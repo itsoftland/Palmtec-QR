@@ -608,13 +608,29 @@ def apk_tickets(request):
         totals['senior'] += sign * (t.senior_count or 0)
         totals['pass'] += sign * pass_count
 
-        for k, f in CATEGORY_FIELD.items():
-            category_amounts[k] += sign * (getattr(t, f) or Decimal('0'))
-        category_amounts['lugg'] += sign * (t.lugg_amount or Decimal('0'))
-        category_amounts['adjust'] += sign * (t.adjust_amount or Decimal('0'))
-
-        if pass_count:
-            category_amounts['pass'] += sign * (t.ticket_amount or Decimal('0'))
+        if t.refund_status == 1:
+            # Refund ticket: subtract refund_amount (not ticket_amount). Spread it over the
+            # row's categories in proportion to their amounts; with no category amounts
+            # (or a pass ticket) the whole refund goes to 'pass' / 'adjust'.
+            refund = t.refund_amount or Decimal('0')
+            parts = {k: (getattr(t, f) or Decimal('0')) for k, f in CATEGORY_FIELD.items()}
+            parts['lugg'] = t.lugg_amount or Decimal('0')
+            parts['adjust'] = t.adjust_amount or Decimal('0')
+            parts_total = sum(parts.values())
+            if pass_count:
+                category_amounts['pass'] -= refund
+            elif parts_total > 0:
+                for k, v in parts.items():
+                    category_amounts[k] -= refund * v / parts_total
+            else:
+                category_amounts['adjust'] -= refund
+        else:
+            for k, f in CATEGORY_FIELD.items():
+                category_amounts[k] += getattr(t, f) or Decimal('0')
+            category_amounts['lugg'] += t.lugg_amount or Decimal('0')
+            category_amounts['adjust'] += t.adjust_amount or Decimal('0')
+            if pass_count:
+                category_amounts['pass'] += t.ticket_amount or Decimal('0')
 
         ticket_list.append({
             'ticket_id': t.id,
