@@ -1,3 +1,5 @@
+import secrets
+
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -8,6 +10,12 @@ from django.shortcuts import get_object_or_404
 
 from ...models.company import ETMDevice
 from ...permissions import LicensePermission
+
+
+def generate_otp():
+    otp = secrets.randbelow(9000) + 1000
+    return str(otp)
+
 
 
 @api_view(['GET'])
@@ -45,7 +53,7 @@ def get_device_credentials(request):
     sl_no = request.GET.get('sl_no')
 
     if sl_no is None:
-        raise ValidationError("Serial Number is required to process the data")
+        raise ValidationError("Serial Number is required.")
 
     device = get_object_or_404(
         ETMDevice,
@@ -69,4 +77,39 @@ def get_device_credentials(request):
         },
         status=status.HTTP_200_OK,
     )
-    
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def refresh_scert_key(request):
+
+    user = request.user
+    company_instance = user.company
+
+    sl_no = request.GET.get('sl_no')
+
+    if sl_no is None:
+            raise ValidationError("Serial Number is required.")
+
+    device = get_object_or_404(
+        ETMDevice,
+        serial_number=sl_no,
+        company=company_instance
+    )
+
+    otp = generate_otp()
+    device.scert_code = otp
+    device.save()
+
+
+    return Response(
+         {
+              "success": True,
+              "message": "scert key refreshed successfully",
+              "data":{
+                   "scert_key": device.scert_code,
+                #    "otp": otp,
+              },
+         },
+         status=status.HTTP_200_OK,
+    )

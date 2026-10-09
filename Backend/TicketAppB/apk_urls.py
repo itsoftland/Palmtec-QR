@@ -71,5 +71,6 @@ urlpatterns = [
     # tamper
     path('allocated-devices/', tamper.allocated_device_list, name='apk_allocated_device_list'),
     path('device-credentials/', tamper.get_device_credentials, name='apk_device_credentials'),
+    path('refresh-scert-key/', tamper.refresh_scert_key, name="refersh_scert_code"),
 
 ]
