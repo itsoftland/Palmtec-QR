@@ -428,19 +428,31 @@ def apk_trips(request):
 
     trip_list = []
     for t in trips:
+        # Refund tickets (refund_status=1) reduce collection by their refund_amount.
+        refunds = TransactionData.objects.filter(
+            company_code=user.company,
+            trip_id=t,
+            refund_status=1,
+        ).aggregate(
+            total=Sum('refund_amount'),
+            upi=Sum('refund_amount', filter=Q(ticket_status='UPI')),
+        )
+        refund_total = refunds['total'] or 0
+        refund_upi = refunds['upi'] or 0
+
         if t.is_closed:
-            revenue = t.total_collection or 0
-            upi_amt = t.upi_ticket_amount or 0
+            revenue = (t.total_collection or 0) - refund_total
+            upi_amt = (t.upi_ticket_amount or 0) - refund_upi
         else:
             live = TransactionData.objects.filter(
                 company_code=user.company,
                 trip_id=t,
             ).aggregate(
-                total=Sum('ticket_amount'),
-                upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
+                total=Sum('ticket_amount', filter=~Q(refund_status=1)),
+                upi=Sum('ticket_amount', filter=Q(ticket_status='UPI') & ~Q(refund_status=1)),
             )
-            revenue = live['total'] or 0
-            upi_amt = live['upi'] or 0
+            revenue = (live['total'] or 0) - refund_total
+            upi_amt = (live['upi'] or 0) - refund_upi
 
         cash_amt = revenue - upi_amt
         trip_list.append({
