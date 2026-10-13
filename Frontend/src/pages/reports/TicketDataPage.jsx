@@ -38,7 +38,7 @@ const getPaxCount = (t) => {
 // ─── Refund tickets subtract from collection ───────────────────────────────────
 const isRefund = (t) => !!t.refund_status;
 const signedAmount = (t) => {
-  const amt = Number(t.ticket_amount) || 0;
+  const amt = (Number(t.ticket_amount) || 0) - (Number(t.adjust_amount) || 0);
   return isRefund(t) ? -Math.abs(amt) : amt;
 };
 
