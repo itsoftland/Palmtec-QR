@@ -615,7 +615,6 @@ def apk_tickets(request):
             refund = t.refund_amount or Decimal('0')
             parts = {k: (getattr(t, f) or Decimal('0')) for k, f in CATEGORY_FIELD.items()}
             parts['lugg'] = t.lugg_amount or Decimal('0')
-            parts['adjust'] = t.adjust_amount or Decimal('0')
             parts_total = sum(parts.values())
             if pass_count:
                 category_amounts['pass'] -= refund
@@ -625,12 +624,19 @@ def apk_tickets(request):
             else:
                 category_amounts['adjust'] -= refund
         else:
-            for k, f in CATEGORY_FIELD.items():
-                category_amounts[k] += getattr(t, f) or Decimal('0')
-            category_amounts['lugg'] += t.lugg_amount or Decimal('0')
-            category_amounts['adjust'] += t.adjust_amount or Decimal('0')
+            # Net amount = ticket amount - adjust amount. The adjust is taken off the row's
+            # categories in proportion to their amounts; a pass ticket takes it from 'pass'.
+            adj = t.adjust_amount or Decimal('0')
+            parts = {k: (getattr(t, f) or Decimal('0')) for k, f in CATEGORY_FIELD.items()}
+            parts['lugg'] = t.lugg_amount or Decimal('0')
+            parts_total = sum(parts.values())
             if pass_count:
-                category_amounts['pass'] += t.ticket_amount or Decimal('0')
+                category_amounts['pass'] += (t.ticket_amount or Decimal('0')) - adj
+            elif parts_total > 0:
+                for k, v in parts.items():
+                    category_amounts[k] += v - adj * v / parts_total
+            else:
+                category_amounts['adjust'] -= adj
 
         ticket_list.append({
             'ticket_id': t.id,
