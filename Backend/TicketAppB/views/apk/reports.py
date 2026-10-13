@@ -362,6 +362,7 @@ def apk_dashboard(request):
                 "cash_amt": str(cash_amt),
                 "upi_amt": str(upi_amt),
                 "sch_start_date": str(latest_data.start_date),
+                "sch_start_time": str(latest_data.start_time) if latest_data.start_time else "",
                 "sch_end_date": str(latest_data.end_date)
             }
 
@@ -373,6 +374,7 @@ def apk_dashboard(request):
                 "cash_amt": "0",
                 "upi_amt": "0",
                 "sch_start_date": "",
+                "sch_start_time": "",
                 "sch_end_date": ""
             }
 
