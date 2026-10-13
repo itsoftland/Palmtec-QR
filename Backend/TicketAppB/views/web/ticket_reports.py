@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.http import JsonResponse
-from django.db.models import Count
+from django.db.models import Count, Sum, Q
 from django.db import OperationalError
 from django.utils.dateparse import parse_datetime
 import pytz
@@ -145,7 +145,24 @@ def get_all_trip_data(request):
 
         qs = qs.order_by('-start_datetime')[:500]
 
-        serializer = TripDataSerializer(qs, many=True)
+        # Subtract each trip's own refund tickets from its collection.
+        objects = list(qs)
+        if objects:
+            refund_rows = TransactionData.objects.filter(
+                company_code=user.company,
+                trip_id__in=objects,
+                refund_status=1,
+            ).values('trip_id').annotate(
+                total=Sum('refund_amount'),
+                upi=Sum('refund_amount', filter=Q(ticket_status=TransactionData.PaymentMode.UPI)),
+            )
+            refunds = {r['trip_id']: r for r in refund_rows}
+            for obj in objects:
+                r = refunds.get(obj.id)
+                obj._refund_total = r['total'] if r else None
+                obj._refund_upi = r['upi'] if r else None
+
+        serializer = TripDataSerializer(objects, many=True)
         return JsonResponse({
             "message": "success",
             "data": serializer.data,

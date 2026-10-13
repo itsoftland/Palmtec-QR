@@ -204,9 +204,21 @@ class TripDataSerializer(serializers.ModelSerializer):
         rd = obj.route_id.route_depots.first()
         return rd.depot.depot_code if rd else None
 
+    def to_representation(self, obj):
+        # Refund tickets (refund_status=1) reduce the trip's own collection by
+        # refund_amount; view attaches _refund_total/_refund_upi per trip.
+        data = super().to_representation(obj)
+        refund_total = getattr(obj, '_refund_total', None) or Decimal('0.00')
+        refund_upi = getattr(obj, '_refund_upi', None) or Decimal('0.00')
+        if refund_total:
+            data['total_collection'] = str((obj.total_collection or Decimal('0.00')) - refund_total)
+        if refund_upi:
+            data['upi_ticket_amount'] = str((obj.upi_ticket_amount or Decimal('0.00')) - refund_upi)
+        return data
+
     def get_total_cash_amount(self, obj):
-        total = obj.total_collection or Decimal('0.00')
-        upi = obj.upi_ticket_amount or Decimal('0.00')
+        total = (obj.total_collection or Decimal('0.00')) - (getattr(obj, '_refund_total', None) or Decimal('0.00'))
+        upi = (obj.upi_ticket_amount or Decimal('0.00')) - (getattr(obj, '_refund_upi', None) or Decimal('0.00'))
         return max(Decimal('0.00'), total - upi)
 
     def get_company_name(self, obj):
