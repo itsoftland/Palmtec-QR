@@ -440,9 +440,20 @@ def apk_trips(request):
         refund_total = refunds['total'] or 0
         refund_upi = refunds['upi'] or 0
 
+        # Adjust amount on the trip's non-refund tickets is also taken off collection.
+        adjusts = TransactionData.objects.filter(
+            company_code=user.company,
+            trip_id=t,
+        ).exclude(refund_status=1).aggregate(
+            total=Sum('adjust_amount'),
+            upi=Sum('adjust_amount', filter=Q(ticket_status='UPI')),
+        )
+        adjust_total = adjusts['total'] or 0
+        adjust_upi = adjusts['upi'] or 0
+
         if t.is_closed:
-            revenue = (t.total_collection or 0) - refund_total
-            upi_amt = (t.upi_ticket_amount or 0) - refund_upi
+            revenue = (t.total_collection or 0) - refund_total - adjust_total
+            upi_amt = (t.upi_ticket_amount or 0) - refund_upi - adjust_upi
         else:
             live = TransactionData.objects.filter(
                 company_code=user.company,
@@ -451,8 +462,8 @@ def apk_trips(request):
                 total=Sum('ticket_amount', filter=~Q(refund_status=1)),
                 upi=Sum('ticket_amount', filter=Q(ticket_status='UPI') & ~Q(refund_status=1)),
             )
-            revenue = (live['total'] or 0) - refund_total
-            upi_amt = (live['upi'] or 0) - refund_upi
+            revenue = (live['total'] or 0) - refund_total - adjust_total
+            upi_amt = (live['upi'] or 0) - refund_upi - adjust_upi
 
         cash_amt = revenue - upi_amt
         trip_list.append({
