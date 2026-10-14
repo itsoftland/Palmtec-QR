@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import api from '../../assets/js/axiosConfig';
-import { Download, MonitorDown, X, Check, ChevronDown, AlertTriangle, FolderOpen } from 'lucide-react';
+import { Download, Upload, MonitorDown, X, Check, ChevronDown, AlertTriangle, FolderOpen } from 'lucide-react';
 
 const FILE_OPTIONS = [
   { key: 'settings',  label: 'Settings',        desc: 'BUS.DAT'                                            },
@@ -86,6 +86,17 @@ async function ensureDownloadMode(dirHandle) {
   if (content === 'download') return;
   const writable = await fileHandle.createWritable();
   await writable.write('download');
+  await writable.close();
+}
+
+// Upload needs mode.txt to say "upload". If it doesn't, erase the file's
+// content and write "upload" (createWritable without keepExistingData truncates).
+async function ensureUploadMode(dirHandle) {
+  const fileHandle = await dirHandle.getFileHandle('mode.txt', { create: true });
+  const content    = (await (await fileHandle.getFile()).text()).trim().toLowerCase();
+  if (content.includes('upload')) return;
+  const writable = await fileHandle.createWritable();
+  await writable.write('upload');
   await writable.close();
 }
 
@@ -250,6 +261,50 @@ function FolderInfoModal({ onConfirm, onClose }) {
   );
 }
 
+// ── Upload: "do you have the tool?" Modal ──────────────────────────────────
+function HasToolModal({ onHave, onDontHave, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-800">Palmtech Data Transfer tool</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm text-slate-600">Do you already have the Palmtech Data Transfer tool on this computer?</p>
+          <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+            <p className="text-xs text-slate-500">
+              <strong>Yes</strong> — select the folder that <strong>contains</strong> the{' '}
+              <code className="text-slate-700">PalmtechDataTransfer</code> folder. The tool is set to upload mode and launched.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+            <p className="text-xs text-slate-500">
+              <strong>No</strong> — select any folder (e.g. Desktop). The tool is downloaded there and set to upload mode;
+              then run it manually.
+            </p>
+          </div>
+          <p className="text-xs text-slate-400">
+            Your browser will ask for permission to edit files in the selected folder — choose <strong>Allow</strong>.
+          </p>
+        </div>
+        <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onDontHave}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">
+            No, download it
+          </button>
+          <button onClick={onHave}
+            className="px-4 py-2 text-sm font-semibold bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors">
+            Yes, select folder
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Skip Files Warning Modal ────────────────────────────────────────────────
 function SkipWarningModal({ skipped, onConfirm, onClose }) {
   return (
@@ -363,8 +418,8 @@ function TransferModal({ onClose }) {
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function DeviceDownload() {
+// ── Download Section ──────────────────────────────────────────────────────────
+function DownloadSection() {
   const [selected,       setSelected]       = useState({ settings: true, schedule: true, crew: true, vehicles: true, expenses: true });
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [showSkipModal,  setShowSkipModal]  = useState(false);
@@ -617,18 +672,7 @@ export default function DeviceDownload() {
   const currentIdx = progress.findIndex(p => p.status === 'downloading');
 
   return (
-    <div className="max-w-xl mx-auto py-10 px-4">
-
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-            <MonitorDown size={18} />
-          </div>
-          <h1 className="text-xl font-bold text-slate-800">Device Download</h1>
-        </div>
-        <p className="text-sm text-slate-400 ml-12">Select files to transfer to the ETM device.</p>
-      </div>
+    <div>
 
       {/* File checklist card */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-4">
@@ -876,6 +920,334 @@ export default function DeviceDownload() {
       {showTransferModal && (
         <TransferModal onClose={() => setShowTransferModal(false)} />
       )}
+    </div>
+  );
+}
+
+// ── Upload Section ────────────────────────────────────────────────────────────
+// Mirrors backend _is_allowed_device_file — only these raw device files are accepted.
+const UPLOAD_CORE_NAMES = new Set([
+  'VERSION.DAT', 'STATUS.DAT', 'BUS.DAT', 'RPT01.DAT',
+  'ODOMETER.DAT', 'EXPENSE.DAT', 'INSPECTOR.DAT',
+]);
+const UPLOAD_DYNAMIC_NAMES = new Set(['PASS.PAS', 'T.CON', 'FAREWISE.DAT', 'PRM']);
+
+function isAllowedDeviceFile(name) {
+  const n = name.toUpperCase();
+  return UPLOAD_CORE_NAMES.has(n) || UPLOAD_DYNAMIC_NAMES.has(n) || (n.startsWith('TKTS') && n.endsWith('.DAT'));
+}
+
+function UploadSection() {
+  const [devices,        setDevices]        = useState([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState('');
+  const [files,          setFiles]          = useState([]);
+  const [ignored,        setIgnored]        = useState([]);
+  const [uploading,      setUploading]      = useState(false);
+  const [done,           setDone]           = useState(null); // { saved: [], rejected: [] }
+  const [error,          setError]          = useState('');
+  const [showToolModal,  setShowToolModal]  = useState(true); // asked on entering the Upload section
+  const [toolBusy,       setToolBusy]       = useState(false);
+  const [toolMsg,        setToolMsg]        = useState('');
+  const [filesDir,       setFilesDir]       = useState(null); // dist/files handle of the tool
+
+  useEffect(() => {
+    setDevicesLoading(true);
+    api.get('/get_company_devices')
+      .then(res => setDevices(res.data.data || []))
+      .catch(() => setError('Failed to load devices.'))
+      .finally(() => setDevicesLoading(false));
+  }, []);
+
+  // hasTool=true: operator points at the folder holding PalmtechDataTransfer.
+  // hasTool=false: operator picks a folder to download it into. Either way an
+  // already-installed tool is never downloaded again. Picker is called first so
+  // it still has the click's user activation.
+  const runToolFlow = async hasTool => {
+    setShowToolModal(false);
+    setError('');
+    setToolMsg('');
+    setDone(null);
+    let root;
+    try {
+      root = await window.showDirectoryPicker({ mode: 'readwrite' });
+    } catch (err) {
+      if (err.name !== 'AbortError') setError('Failed to open folder picker.');
+      return;
+    }
+    setToolBusy(true);
+    try {
+      let dist = null;
+      try {
+        dist = await getExistingNestedDirectory(root, ['PalmtechDataTransfer', 'dist', 'files']);
+      } catch (err) {
+        if (err.name !== 'NotFoundError') throw err;
+      }
+
+      if (!dist) {
+        if (hasTool) {
+          setError('PalmtechDataTransfer tool not found in that folder. Select the folder that contains it, or choose "No, download it".');
+          return;
+        }
+        const blob = await fetchBinary('/device/palmtech-tool', 300000);
+        await writeZipToDirectory(blob, root);
+        dist = await getNestedDirectory(root, ['PalmtechDataTransfer', 'dist', 'files']);
+        await ensureUploadMode(dist);
+        // Fresh install: stop here, operator runs the tool manually.
+        setToolMsg('Tool downloaded and set to upload mode. Run Palmtech Data Transfer manually (register the palmtec protocol with PalmtechDataTransfer\\protocol-handler\\register-palmtec-protocol-windows.bat if needed), read the device, then come back and click "Upload files from tool folder".');
+        setFilesDir(dist);
+        return;
+      }
+
+      await ensureUploadMode(dist);
+      setFilesDir(dist);
+      window.location.assign('palmtec://launch');
+      setToolMsg('Tool set to upload mode and launched. Once it reports "Files Upload successfully", click "Upload files from tool folder".');
+    } catch (err) {
+      setError(`Tool setup failed: ${err.message || err.name}`);
+    } finally {
+      setToolBusy(false);
+    }
+  };
+
+  const uploadFromToolFolder = async () => {
+    if (!filesDir) return;
+    const picked = [];
+    try {
+      for await (const entry of filesDir.values()) {
+        if (entry.kind === 'file' && isAllowedDeviceFile(entry.name)) picked.push(await entry.getFile());
+      }
+    } catch (err) {
+      setError(`Failed to read tool folder: ${err.message || err.name}`);
+      return;
+    }
+    if (picked.length === 0) {
+      setError('No device files found in the tool folder. Run the transfer tool first.');
+      return;
+    }
+    await handleUpload(picked);
+  };
+
+  const resetResult = () => { setDone(null); setError(''); };
+
+  const addFiles = list => {
+    const picked = Array.from(list);
+    setFiles(picked.filter(f => isAllowedDeviceFile(f.name)));
+    setIgnored(picked.filter(f => !isAllowedDeviceFile(f.name)).map(f => f.name));
+    resetResult();
+  };
+
+  const pickFolder = async () => {
+    try {
+      const dir = await window.showDirectoryPicker({ mode: 'read' });
+      const picked = [];
+      for await (const entry of dir.values()) {
+        if (entry.kind === 'file') picked.push(await entry.getFile());
+      }
+      addFiles(picked);
+    } catch (err) {
+      if (err.name !== 'AbortError') setError('Failed to read folder.');
+    }
+  };
+
+  const removeFile = name => setFiles(prev => prev.filter(f => f.name !== name));
+
+  const handleUpload = async (override) => {
+    const list = Array.isArray(override) ? override : files;
+    setUploading(true);
+    resetResult();
+    try {
+      const form = new FormData();
+      form.append('serialnumber', selectedDevice);
+      list.forEach((f, i) => form.append(`file${i}`, f, f.name));
+      const res = await api.post('/device/upload-data', form, {
+        timeout: 300000,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setDone({ saved: res.data.saved || list.map(f => f.name), rejected: res.data.rejected || [] });
+      setFiles([]);
+      setIgnored([]);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm mb-4">
+        {/* Device */}
+        <div className="px-5 py-4 border-b border-slate-100">
+          <p className="text-sm font-semibold text-slate-700 mb-2">Device</p>
+          {devicesLoading ? (
+            <p className="text-xs text-slate-400">Loading devices…</p>
+          ) : devices.length === 0 ? (
+            <p className="text-xs text-red-500">No allocated devices found for this company.</p>
+          ) : (
+            <select
+              value={selectedDevice}
+              onChange={e => { setSelectedDevice(e.target.value); resetResult(); }}
+              className="text-xs border border-slate-200 rounded-lg px-3 py-2 text-slate-600
+                hover:border-slate-400 focus:outline-none focus:border-slate-500 bg-white"
+            >
+              <option value="">Choose device…</option>
+              {devices.map(d => (
+                <option key={d.id} value={d.serial_number}>
+                  {d.serial_number}{d.palmtec_id ? ` (${d.palmtec_id})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Transfer tool status */}
+        {(toolBusy || toolMsg || filesDir) && (
+          <div className="px-5 py-4 border-b border-slate-100">
+            {toolBusy && <p className="text-xs text-slate-400">Preparing tool…</p>}
+            {toolMsg && <p className="text-xs text-slate-500">{toolMsg}</p>}
+            {filesDir && (
+              <button
+                onClick={uploadFromToolFolder}
+                disabled={toolBusy || uploading || !selectedDevice}
+                className="flex items-center gap-2 mt-3 px-3 py-2 text-xs font-semibold bg-slate-800 text-white rounded-lg
+                  hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Upload size={12} />
+                Upload files from tool folder
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Files */}
+        <div className="px-5 py-4">
+          <p className="text-sm font-semibold text-slate-700">Or pick device files manually</p>
+          <p className="text-xs text-slate-400 mb-3">
+            BUS.DAT · INSPECTOR.DAT · EXPENSE.DAT · ODOMETER.DAT · RPT01.DAT · TKTS*.DAT · PASS.PAS · …
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <label className="flex items-center gap-2 px-3 py-2 text-xs font-medium border border-slate-200 rounded-lg
+              text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors bg-white cursor-pointer">
+              <Upload size={12} />
+              Choose files…
+              <input type="file" multiple className="hidden"
+                onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+            </label>
+            {window.showDirectoryPicker && (
+              <button
+                onClick={pickFolder}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-medium border border-slate-200 rounded-lg
+                  text-slate-600 hover:border-slate-400 hover:text-slate-800 transition-colors bg-white"
+              >
+                <FolderOpen size={12} />
+                Choose folder…
+              </button>
+            )}
+          </div>
+
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {files.map(f => (
+                <span key={f.name} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 text-xs rounded-md font-medium">
+                  {f.name}
+                  <button onClick={() => removeFile(f.name)} className="text-slate-400 hover:text-slate-700">
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {ignored.length > 0 && (
+            <p className="text-xs text-amber-600 mt-2">
+              Ignored {ignored.length} unsupported file{ignored.length !== 1 ? 's' : ''}: {ignored.join(', ')}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
+      )}
+
+      {done && (
+        <div className="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+          <div className="flex items-center gap-2">
+            <Check size={15} strokeWidth={3} />
+            Uploaded {done.saved.length} file{done.saved.length !== 1 ? 's' : ''} successfully.
+          </div>
+          {done.rejected.length > 0 && (
+            <p className="text-xs text-amber-700 font-normal mt-1 ml-[23px]">
+              Rejected: {done.rejected.map(r => (typeof r === 'string' ? r : r.name || JSON.stringify(r))).join(', ')}
+            </p>
+          )}
+        </div>
+      )}
+
+      <button
+        onClick={() => handleUpload()}
+        disabled={uploading || files.length === 0 || !selectedDevice}
+        className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-slate-800 text-white
+          text-sm font-semibold rounded-xl hover:bg-slate-700 transition-colors
+          disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {uploading
+          ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          : <Upload size={16} />}
+        {uploading ? 'Uploading…' : `Upload${files.length ? ` (${files.length})` : ''}`}
+      </button>
+
+      {showToolModal && (
+        <HasToolModal
+          onHave={() => runToolFlow(true)}
+          onDontHave={() => runToolFlow(false)}
+          onClose={() => setShowToolModal(false)}
+        />
+      )}
+      {!selectedDevice && !uploading && (
+        <p className="text-xs text-slate-400 text-center mt-2">Select a device to upload its data.</p>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function DeviceDownload() {
+  const [section, setSection] = useState('download');
+  const isDownload = section === 'download';
+
+  return (
+    <div className="max-w-xl mx-auto py-10 px-4">
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+            <MonitorDown size={18} />
+          </div>
+          <h1 className="text-xl font-bold text-slate-800">Device Transfer</h1>
+        </div>
+        <p className="text-sm text-slate-400 ml-12">
+          {isDownload ? 'Select files to transfer to the ETM device.' : 'Upload data files read from the ETM device.'}
+        </p>
+      </div>
+
+      <div className="flex p-1 mb-6 bg-slate-100 rounded-xl">
+        {[
+          { key: 'download', label: 'Download to Device', Icon: Download },
+          { key: 'upload',   label: 'Upload from Device', Icon: Upload   },
+        ].map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => setSection(key)}
+            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition-colors
+              ${section === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {isDownload ? <DownloadSection /> : <UploadSection />}
     </div>
   );
 }
