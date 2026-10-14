@@ -101,10 +101,13 @@ function FieldGroup({ title, children, columns = 2 }) {
   );
 }
 
+// Net collection = total collection minus adjust amount
+const netCollection = (t) => Number(t.total_collection || 0) - Number(t.adjust_collection || 0);
+
 // ─── Trip lifecycle row ────────────────────────────────────────────────────────
 function TripRow({ trip, onView, isNew }) {
   const isOpen = trip.status === 'open';
-  const upiShare = trip.total_collection ? ((Number(trip.upi_ticket_amount) || 0) / Number(trip.total_collection)) * 100 : 0;
+  const upiShare = netCollection(trip) ? ((Number(trip.upi_ticket_amount) || 0) / netCollection(trip)) * 100 : 0;
 
   return (
     <div className={`border border-slate-200 shadow-sm rounded-2xl bg-white overflow-hidden transition-shadow hover:shadow-md ${isNew ? 'ring-2 ring-slate-300' : ''}`}>
@@ -205,7 +208,7 @@ function TripRow({ trip, onView, isNew }) {
         <div className="col-span-2 flex items-center justify-end gap-3">
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Collection</p>
-            <p className="text-base font-bold text-slate-900">{fmt.inr(trip.total_collection)}</p>
+            <p className="text-base font-bold text-slate-900">{fmt.inr(netCollection(trip))}</p>
             <div className="flex items-center gap-1 justify-end mt-0.5">
               <div className="h-1 w-12 rounded-full bg-emerald-100 overflow-hidden">
                 {/* UPI SHARE AS NAN IN UI. REQUIRES UI FIX */}
@@ -384,7 +387,7 @@ function TripDetailModal({ trip, onClose }) {
           <div className="grid grid-cols-3 gap-3">
             <FieldBlock label="UPI Amount"       value={fmt.inr(trip.upi_ticket_amount)} accent="blue" />
             <FieldBlock label="Cash Amount"      value={fmt.inr(trip.total_cash_amount)}  accent="emerald" />
-            <FieldBlock label="Total Collection" value={fmt.inr(trip.total_collection)}   accent="slate" />
+            <FieldBlock label="Total Collection" value={fmt.inr(netCollection(trip))}   accent="slate" />
           </div>
 
           <div className="flex justify-end pt-2 border-t border-slate-100">
@@ -579,7 +582,7 @@ export default function TripDataPage() {
     open:       filteredData.filter(t => t.status === 'open').length,
     closed:     filteredData.filter(t => t.status === 'closed').length,
     passengers: filteredData.reduce((s, t) => s + (t.total_passengers || 0), 0),
-    collection: filteredData.reduce((s, t) => s + Number(t.total_collection || 0), 0),
+    collection: filteredData.reduce((s, t) => s + netCollection(t), 0),
     upi:        filteredData.reduce((s, t) => s + Number(t.upi_ticket_amount || 0), 0),
   };
 
@@ -656,6 +659,7 @@ export default function TripDataPage() {
     filteredData.forEach(t => {
       ws.addRow({
         ...t,
+        total_collection: netCollection(t),
         start_datetime: t.start_datetime ? new Date(t.start_datetime).toLocaleString() : '—',
         end_datetime:   t.end_datetime   ? new Date(t.end_datetime).toLocaleString()   : '—',
       });
