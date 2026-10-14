@@ -145,8 +145,8 @@ def apk_dashboard(request):
         trip_id__is_closed=False,
         **bus_filter,
     ).aggregate(
-        total=Sum('ticket_amount'),
-        upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
+        total=Sum('ticket_amount', filter=~Q(refund_status=1)),
+        upi=Sum('ticket_amount', filter=Q(ticket_status='UPI') & ~Q(refund_status=1)),
     )
 
     total_revenue = (closed_day['total'] or 0) + (open_day['total'] or 0)
@@ -191,8 +191,8 @@ def apk_dashboard(request):
             bus_no__isnull=False,
             **bus_filter,
         ).values('bus_no').annotate(
-            revenue=Sum('ticket_amount'),
-            upi_amt=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
+            revenue=Sum('ticket_amount', filter=~Q(refund_status=1)),
+            upi_amt=Sum('ticket_amount', filter=Q(ticket_status='UPI') & ~Q(refund_status=1)),
         )
     }
 
@@ -215,6 +215,30 @@ def apk_dashboard(request):
 
     running_count = len(running_buses)
 
+    # ── Deductions: refund_amount (refund tickets) + adjust_amount (other tickets) ──
+    # Same trip scope as the revenue sources above: closed trips by trip start_date,
+    # open trips by schedule start_date.
+    deduct_scope = Q(company_code=company, **bus_filter) & (
+        Q(trip_id__is_closed=True, trip_id__start_date=date_str)
+        | Q(trip_id__is_closed=False, schedule_id__start_date=date_str)
+    )
+    deduct_rows = TransactionData.objects.filter(deduct_scope).values('bus_no').annotate(
+        refund=Sum('refund_amount', filter=Q(refund_status=1)),
+        refund_upi=Sum('refund_amount', filter=Q(refund_status=1, ticket_status='UPI')),
+        adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+        adjust_upi=Sum('adjust_amount', filter=~Q(refund_status=1) & Q(ticket_status='UPI')),
+    )
+    deductions = {}
+    for r in deduct_rows:
+        deductions[r['bus_no']] = {
+            'total': (r['refund'] or 0) + (r['adjust'] or 0),
+            'upi': (r['refund_upi'] or 0) + (r['adjust_upi'] or 0),
+        }
+
+    # Header totals follow the same rule (all buses, so bus_list sums match them).
+    total_revenue -= sum(d['total'] for d in deductions.values())
+    total_upi -= sum(d['upi'] for d in deductions.values())
+
     vehicle_qs = VehicleType.objects.filter(company=company, is_deleted=False)
     if is_basic:
         vehicle_qs = vehicle_qs.filter(bus_reg_num=assigned_bus_no)
@@ -225,6 +249,9 @@ def apk_dashboard(request):
         open_rev = open_bus_rows.get(reg_num, {})
         revenue = (closed.get('revenue') or 0) + (open_rev.get('revenue') or 0)
         upi_amt = (closed.get('upi_amt') or 0) + (open_rev.get('upi_amt') or 0)
+        ded = deductions.get(reg_num, {})
+        revenue -= ded.get('total', 0)
+        upi_amt -= ded.get('upi', 0)
         cash_amt = revenue - upi_amt
 
         if reg_num in running_buses:
@@ -347,6 +374,9 @@ def apk_dashboard(request):
             open_rev = open_bus_rows.get(bus_no, {})
             revenue = (closed.get('revenue') or 0) + (open_rev.get('revenue') or 0)
             upi_amt = (closed.get('upi_amt') or 0) + (open_rev.get('upi_amt') or 0)
+            ded = deductions.get(bus_no, {})
+            revenue -= ded.get('total', 0)
+            upi_amt -= ded.get('upi', 0)
             cash_amt = revenue - upi_amt
 
             status = (
