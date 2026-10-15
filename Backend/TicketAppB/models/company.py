@@ -472,6 +472,8 @@ class ETMDevice(models.Model):
         related_name='etm_devices_sourced',
     )
 
+    tamper_status = models.BooleanField(default=False)
+
     # ── Activity tracking ──────────────────────────────────────────────────────
     has_fetched_setup = models.BooleanField(
         default=False,
@@ -517,3 +519,7 @@ class ETMDevice(models.Model):
         company_name = self.company.company_name if self.company else 'Unassigned'
         pid = f' [PalmtecID: {self.palmtec_id}]' if self.palmtec_id else ' [No Palmtec ID]'
         return f'{self.serial_number} ({self.device_type}){pid} — {company_name}'
+
+
+
+
