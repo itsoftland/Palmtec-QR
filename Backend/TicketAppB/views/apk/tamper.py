@@ -87,9 +87,13 @@ def refresh_scert_key(request):
     company_instance = user.company
 
     sl_no = request.GET.get('sl_no')
+    tamper_at = request.GET.get('tamper_at')
 
     if sl_no is None:
-            raise ValidationError("Serial Number is required.")
+        raise ValidationError("Serial Number is required.")
+
+    if tamper_at is None:
+         raise ValidationError("tamper_at is required.")
 
     device = get_object_or_404(
         ETMDevice,
@@ -98,18 +102,54 @@ def refresh_scert_key(request):
     )
 
     otp = generate_otp()
-    device.scert_code = otp
+
+    device.tamper_status = True
     device.save()
 
+    return Response(
+        {
+            "success": True,
+            "message": "scert key refreshed successfully",
+            "data":{
+                "scert_key": otp,
+            },
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, LicensePermission])
+def reset_device_tamper_status(request):
+
+    user = request.user
+    company_instance = user.company
+
+    sl_no = request.GET.get('sl_no')
+    new_key = request.GET.get('new_key')
+    untamper_at = request.GET.get('untamper_at')
+
+    if sl_no is None:
+            raise ValidationError("Serial Number is required.")
+
+    if untamper_at is None:
+             raise ValidationError("untamper_at is required.")
+
+    device = get_object_or_404(
+        ETMDevice,
+        serial_number=sl_no,
+        company=company_instance
+    )
+
+    device.scert_code = new_key
+    device.tamper_status = False
+
+    device.save()
 
     return Response(
-         {
-              "success": True,
-              "message": "scert key refreshed successfully",
-              "data":{
-                   "scert_key": device.scert_code,
-                #    "otp": otp,
-              },
-         },
-         status=status.HTTP_200_OK,
+        {
+            "success": True,
+            "message": "device reset successfully",
+        },
+        status=status.HTTP_200_OK,
     )

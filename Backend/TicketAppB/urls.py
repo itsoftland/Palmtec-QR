@@ -9,6 +9,7 @@ from .views.web import company as company_views
 from .views.web import sessions as session_views
 from .views import setup_data as setup_data_views
 from .views.apk import master_send as palmtec_views
+from .views.apk import apk_upload as apk_upload_views
 from .views.web.masterdata import crew as crew_views
 from .views.web import audit_logs as audit_log_views
 from .views.web import executives as executive_views
@@ -248,4 +249,6 @@ urlpatterns = [
     path('device/rtedat',      palmtec_views.get_rtedat_file),
     # Settings group
     path('device/currency',    palmtec_views.get_currency_file),
+    # Device → server raw .DAT upload (same view the APK uses, ungated by tier)
+    path('device/upload-data', apk_upload_views.uploadDeviceData, name='web_upload_device_data'),
 ]
