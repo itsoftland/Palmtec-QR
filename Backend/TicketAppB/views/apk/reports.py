@@ -3,6 +3,7 @@ from collections import defaultdict
 from decimal import Decimal
 from rest_framework.response import Response
 from django.db.models import Q, Sum, Count, Max, F, Case, When, IntegerField
+from django.db.models.functions import Coalesce
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
@@ -1159,7 +1160,7 @@ def farewise_report(request):
 
     fares = [
         {
-            'fare': str(r['ticket_amount']),
+            'fare': str(r['fare']),
             'ticket_count': r['ticket_count'],
             'revenue': str(r['revenue'] or '0.00'),
         }
@@ -1167,10 +1168,14 @@ def farewise_report(request):
             company_code=user.company,
             bus_no=bus_no,
             ticket_date__range=[from_date, to_date],
-        ).values('ticket_amount').annotate(
-            ticket_count=Count('id'),
-            revenue=Sum('ticket_amount'),
-        ).order_by('ticket_amount')
+        ).annotate(
+            fare=F('ticket_amount') - F('adjust_amount'),  # fare = ticket amount minus adjust amount
+        ).values('fare').annotate(
+            # refund tickets (refund_status=1) are subtracted instead of added
+            ticket_count=Count('id', filter=~Q(refund_status=1)) - Count('id', filter=Q(refund_status=1)),
+            revenue=Coalesce(Sum(F('ticket_amount') - F('adjust_amount'), filter=~Q(refund_status=1)), Decimal('0'))
+                    - Coalesce(Sum(F('ticket_amount') - F('adjust_amount'), filter=Q(refund_status=1)), Decimal('0')),
+        ).order_by('fare')
     ]
 
     trips = TripData.objects.filter(
@@ -1179,47 +1184,38 @@ def farewise_report(request):
         start_date__range=[from_date, to_date],
     ).order_by('start_date', 'trip_no')
 
-    open_trip_ids = [t.id for t in trips if not t.is_closed]
-    open_agg = {}
-    if open_trip_ids:
+    # Refund ticket (refund_status=1) subtracts its counts, same rule as the ticket report.
+    sign = Case(When(refund_status=1, then=-1), default=1, output_field=IntegerField())
+    is_pass = Q(ticket_type=32) | (Q(pass_number__isnull=False) & ~Q(pass_number=''))
+    trip_agg = {}
+    trip_ids = [t.id for t in trips]
+    if trip_ids:
         for row in TransactionData.objects.filter(
-            trip_id__in=open_trip_ids,
+            trip_id__in=trip_ids,
         ).values('trip_id').annotate(
-            full=Sum('full_count'), half=Sum('half_count'),
-            st=Sum('st_count'), phy=Sum('phy_count'),
-            lugg=Sum('lugg_count'), ladies=Sum('ladies_count'), senior=Sum('senior_count'),
+            full=Sum(F('full_count') * sign), half=Sum(F('half_count') * sign),
+            st=Sum(F('st_count') * sign), phy=Sum(F('phy_count') * sign),
+            lugg=Sum(F('lugg_count') * sign), ladies=Sum(F('ladies_count') * sign),
+            senior=Sum(F('senior_count') * sign),
+            pass_cnt=Sum(sign, filter=is_pass),
         ):
-            open_agg[row['trip_id']] = row
+            trip_agg[row['trip_id']] = row
 
     passenger_counts = []
     for t in trips:
-        if t.is_closed:
-            passenger_counts.append({
-                'trip_no': t.trip_no,
-                'date': str(t.start_date),
-                'full': t.full_count or 0,
-                'half': t.half_count or 0,
-                'st': t.st_count or 0,
-                'phy': t.physical_count or 0,
-                'lugg': t.luggage_count or 0,
-                'pass': t.pass_count or 0,
-                'ladies': t.ladies_count or 0,
-                'senior': t.senior_count or 0,
-            })
-        else:
-            agg = open_agg.get(t.id, {})
-            passenger_counts.append({
-                'trip_no': t.trip_no,
-                'date': str(t.start_date),
-                'full': agg.get('full') or 0,
-                'half': agg.get('half') or 0,
-                'st': agg.get('st') or 0,
-                'phy': agg.get('phy') or 0,
-                'lugg': agg.get('lugg') or 0,
-                'pass': 0,
-                'ladies': agg.get('ladies') or 0,
-                'senior': agg.get('senior') or 0,
-            })
+        agg = trip_agg.get(t.id, {})
+        passenger_counts.append({
+            'trip_no': t.trip_no,
+            'date': str(t.start_date),
+            'full': agg.get('full') or 0,
+            'half': agg.get('half') or 0,
+            'st': agg.get('st') or 0,
+            'phy': agg.get('phy') or 0,
+            'lugg': agg.get('lugg') or 0,
+            'pass': agg.get('pass_cnt') or 0,
+            'ladies': agg.get('ladies') or 0,
+            'senior': agg.get('senior') or 0,
+        })
 
     return Response({
         'fares': fares,
