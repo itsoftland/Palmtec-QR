@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from .auth import CustomUser
 
 
 # ── Company ───────────────────────────────────────────────────────────────────
@@ -522,4 +523,60 @@ class ETMDevice(models.Model):
 
 
 
+class TamperedDeviceHistory(models.Model):
 
+    class TamperStatus(models.TextChoices):
+        NEW = "new", "New"
+        TAMPERED = "tampered", "Tampered"
+        UNTAMPERED = "untampered", "Untampered"
+
+
+    device = models.ForeignKey(
+        ETMDevice,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tampered_device_history"
+    )
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tampered_device_histotry"
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=TamperStatus.choices,
+        default=TamperStatus.NEW
+    )
+
+    untampered_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="untampered_device_history",
+    )
+
+    tampered_at = models.DateTimeField()
+
+    untampered_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+    class Meta:
+        db_table = "tamper_device_history"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "device"]),
+            models.Index(fields=["company", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.device_id} - {self.status}"
