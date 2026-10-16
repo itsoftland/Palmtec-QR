@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.http import JsonResponse
-from django.db.models import Count, Sum, Q
+from django.db.models import Case, Count, F, IntegerField, Sum, Q, When
 from django.db import OperationalError
 from django.utils.dateparse import parse_datetime
 import pytz
@@ -157,10 +157,25 @@ def get_all_trip_data(request):
                 upi=Sum('refund_amount', filter=Q(ticket_status=TransactionData.PaymentMode.UPI)),
             )
             refunds = {r['trip_id']: r for r in refund_rows}
+            # Device often sends 0 for total_passengers in TrpCl; derive from
+            # ticket rows (net of refunds) when the stored value is empty.
+            pax_rows = TransactionData.objects.filter(
+                company_code=user.company,
+                trip_id__in=objects,
+            ).values('trip_id').annotate(
+                pax=Sum(Case(
+                    When(refund_status=1, then=-F('total_tickets')),
+                    default=F('total_tickets'),
+                    output_field=IntegerField(),
+                )),
+            )
+            pax = {r['trip_id']: r['pax'] for r in pax_rows}
             for obj in objects:
                 r = refunds.get(obj.id)
                 obj._refund_total = r['total'] if r else None
                 obj._refund_upi = r['upi'] if r else None
+                if not obj.total_passengers and pax.get(obj.id):
+                    obj.total_passengers = max(0, int(pax[obj.id]))
 
         serializer = TripDataSerializer(objects, many=True)
         return JsonResponse({
