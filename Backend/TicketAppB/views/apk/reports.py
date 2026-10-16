@@ -398,6 +398,22 @@ def apk_dashboard(request):
             bus_no=bus_no
         )
 
+        # Open vs closed schedule stats for this bus (up to date_str).
+        open_schedules = bus_schedules.filter(close_unique_code__isnull=True)
+        closed_schedules = bus_schedules.filter(
+            close_unique_code__isnull=False, end_date=date_str
+        )
+        closed_agg = closed_schedules.aggregate(
+            total=Sum('total_collection'),
+            upi=Sum('upi_total_collection'),
+        )
+        closed_total = closed_agg['total'] or Decimal('0')
+        closed_upi = closed_agg['upi'] or Decimal('0')
+        sched_stats = {
+            "open_schedule_count": open_schedules.count(),
+            "closed_schedule_count": closed_schedules.count(),
+        }
+
         if bus_schedules.exists():
 
             # Latest schedule
@@ -415,6 +431,9 @@ def apk_dashboard(request):
             ded = deductions.get(bus_no, {})
             revenue -= ded.get('total', 0)
             upi_amt -= ded.get('upi', 0)
+            # Fold in collection of schedules closed on date_str.
+            revenue += closed_total
+            upi_amt += closed_upi
             cash_amt = revenue - upi_amt
 
             status = (
@@ -446,6 +465,7 @@ def apk_dashboard(request):
                 "sch_end_date": ""
             }
 
+        bus_data.update(sched_stats)
         bus_lists.append(bus_data)
             
 
