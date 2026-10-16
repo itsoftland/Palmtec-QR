@@ -170,7 +170,7 @@ export default function CompanyDashboard() {
         <KpiCard
           title="Active Buses"
           value={loading ? '—' : `${d.operations.buses_active}/${d.operations.buses_total}`}
-          subtitle={loading ? '' : `${d.operations.buses_idle} idle · ${d.operations.buses_running} running`}
+          subtitle={loading ? '' : `${d.operations.buses_running} running`}
           icon={Bus}
           color="#f59e0b"
           loading={loading}

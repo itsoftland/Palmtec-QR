@@ -19,7 +19,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from ...permissions import LicensePermission
 from django.db.utils import OperationalError, ProgrammingError
-from django.db.models import Sum, Q, Count, Case, When, IntegerField
+from django.db.models import Sum, Q, Count, Case, When, IntegerField, F, DecimalField
 from ...models import Company, TransactionData, TripData, ScheduleData, Route, VehicleType, AggregatorTransaction, Dealer, ETMDevice, UserSession, UserRole, UserTier
 from ..utils import _is_superadmin, _is_executive, _is_dealer_admin, _is_company_admin
 from .audit_logs import log_action
@@ -1460,21 +1460,28 @@ def get_company_dashboard_metrics(request):
         )
         
         # Daily cash collection
+        # Net revenue per ticket: refunded (refund_status=1) -> -refund_amount,
+        # otherwise ticket_amount - adjust_amount.
+        net_revenue = Case(
+            When(refund_status=1, then=-F('refund_amount')),
+            default=F('ticket_amount') - F('adjust_amount'),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        )
         daily_cash = transaction_base.filter(
             ticket_status=TransactionData.PaymentMode.CASH
-        ).aggregate(total=Sum('ticket_amount'))['total'] or 0
+        ).aggregate(total=Sum(net_revenue))['total'] or 0
         
         # Daily UPI collection
         daily_upi = transaction_base.filter(
             ticket_status=TransactionData.PaymentMode.UPI
-        ).aggregate(total=Sum('ticket_amount'))['total'] or 0
+        ).aggregate(total=Sum(net_revenue))['total'] or 0
         
         # Monthly total (all transactions in the same month)
         monthly_total = TransactionData.objects.filter(
             company_code=company,
             ticket_date__year=selected_date.year,
             ticket_date__month=selected_date.month
-        ).aggregate(total=Sum('ticket_amount'))['total'] or 0
+        ).aggregate(total=Sum(net_revenue))['total'] or 0
         
         # Previous month total (for month-over-month comparison)
         prev_month_date = selected_date - relativedelta(months=1)
@@ -1482,7 +1489,7 @@ def get_company_dashboard_metrics(request):
             company_code=company,
             ticket_date__year=prev_month_date.year,
             ticket_date__month=prev_month_date.month
-        ).aggregate(total=Sum('ticket_amount'))['total'] or 0
+        ).aggregate(total=Sum(net_revenue))['total'] or 0
 
         collections = {
             "daily_cash": float(daily_cash),
@@ -1492,8 +1499,13 @@ def get_company_dashboard_metrics(request):
         }
         
         # Total passengers (from ticket counts)
+        # Refunded tickets (refund_status=1) are subtracted from the count.
         total_passengers = transaction_base.aggregate(
-            total=Sum('total_tickets')
+            total=Sum(Case(
+                When(refund_status=1, then=-F('total_tickets')),
+                default=F('total_tickets'),
+                output_field=IntegerField(),
+            ))
         )['total'] or 0
         operations["total_passengers"] = int(total_passengers)
         
