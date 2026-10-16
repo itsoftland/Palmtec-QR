@@ -309,16 +309,53 @@ def apk_dashboard(request):
             trip_id__is_closed=False,
             **bus_filter,
         ).values('schedule_id__start_date').annotate(
-            total=Sum('ticket_amount'),
-            upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
+            total=Sum('ticket_amount', filter=~Q(refund_status=1)),
+            upi=Sum('ticket_amount', filter=Q(ticket_status='UPI') & ~Q(refund_status=1)),
         )
     }
 
-    all_week_dates = sorted(set(closed_weekly.keys()) | set(open_weekly.keys()))
+    # Per-day deductions: refund_amount (refund tickets) + adjust_amount (other tickets).
+    # Closed trips keyed by trip start_date, open trips by schedule start_date.
+    def _add_deductions(rows, date_key):
+        for r in rows:
+            d = str(r[date_key])
+            tgt = weekly_deduct.setdefault(d, {'total': 0, 'upi': 0})
+            tgt['total'] += (r['refund'] or 0) + (r['adjust'] or 0)
+            tgt['upi'] += (r['refund_upi'] or 0) + (r['adjust_upi'] or 0)
+
+    weekly_deduct = {}
+    _ded_aggs = dict(
+        refund=Sum('refund_amount', filter=Q(refund_status=1)),
+        refund_upi=Sum('refund_amount', filter=Q(refund_status=1, ticket_status='UPI')),
+        adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+        adjust_upi=Sum('adjust_amount', filter=~Q(refund_status=1) & Q(ticket_status='UPI')),
+    )
+    _add_deductions(
+        TransactionData.objects.filter(
+            company_code=company,
+            trip_id__is_closed=True,
+            trip_id__start_date__range=[week_start, week_end],
+            **bus_filter,
+        ).values('trip_id__start_date').annotate(**_ded_aggs),
+        'trip_id__start_date',
+    )
+    _add_deductions(
+        TransactionData.objects.filter(
+            company_code=company,
+            trip_id__is_closed=False,
+            schedule_id__start_date__range=[week_start, week_end],
+            **bus_filter,
+        ).values('schedule_id__start_date').annotate(**_ded_aggs),
+        'schedule_id__start_date',
+    )
+
+    all_week_dates = sorted(set(closed_weekly.keys()) | set(open_weekly.keys()) | set(weekly_deduct.keys()))
     weekly_chart = []
     for date in all_week_dates:
         rev = (closed_weekly.get(date, {}).get('total', 0)) + (open_weekly.get(date, {}).get('total', 0))
         upi = (closed_weekly.get(date, {}).get('upi', 0)) + (open_weekly.get(date, {}).get('upi', 0))
+        rev -= weekly_deduct.get(date, {}).get('total', 0)
+        upi -= weekly_deduct.get(date, {}).get('upi', 0)
         weekly_chart.append({
             'date': date,
             'total': str(rev),
