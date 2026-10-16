@@ -36,7 +36,11 @@ const getPaxCount = (t) => {
 };
 
 // ─── Refund tickets subtract from collection ───────────────────────────────────
-const isRefund = (t) => !!t.refund_status;
+const isRefund = (t) => !!t.refund_status && String(t.refund_status).trim() !== '0';
+const signedCount = (t) => {
+  const n = Number(t.total_tickets) || 1;
+  return isRefund(t) ? -Math.abs(n) : n;
+};
 const signedAmount = (t) => {
   const amt = (Number(t.ticket_amount) || 0) - (Number(t.adjust_amount) || 0);
   return isRefund(t) ? -Math.abs(amt) : amt;
@@ -354,7 +358,7 @@ function TicketDetailModal({ ticket: t, onClose }) {
               {!!t.pass_id && !!t.pass_number && (
                 <FieldBlock label="Pass Number" value={t.pass_number} />
               )}
-              {!!t.refund_status && <FieldBlock label="Refund Status" value={t.refund_status} />}
+              {isRefund(t) && <FieldBlock label="Refund Status" value={t.refund_status} />}
             </FieldGroup>
           )}
 
@@ -578,10 +582,10 @@ export default function TicketDataPage() {
   const upiRows  = filteredData.filter(t => t.ticket_status === 'UPI');
   const cashRows = filteredData.filter(t => t.ticket_status !== 'UPI');
   const summary = {
-    tickets:  filteredData.reduce((s, t) => s + (t.total_tickets || 0), 0),
+    tickets:  filteredData.reduce((s, t) => s + signedCount(t), 0),
     amount:   filteredData.reduce((s, t) => s + signedAmount(t), 0),
-    upiCount: upiRows.length,
-    cashCount: cashRows.length,
+    upiCount: upiRows.reduce((s, t) => s + signedCount(t), 0),
+    cashCount: cashRows.reduce((s, t) => s + signedCount(t), 0),
     upiAmt:   upiRows.reduce((s, t) => s + signedAmount(t), 0),
     cashAmt:  cashRows.reduce((s, t) => s + signedAmount(t), 0),
     devices:  new Set(filteredData.map(t => t.palmtec_id)).size,
@@ -921,7 +925,7 @@ export default function TicketDataPage() {
                     <td className="px-4 py-3"></td>
                     <td colSpan={5} className="px-4 py-3 font-semibold text-slate-600 uppercase tracking-wider">Page total</td>
                     <td className="px-4 py-3 text-center font-bold text-slate-800">
-                      {currentData.reduce((s, t) => s + (t.total_tickets || 0), 0)}
+                      {currentData.reduce((s, t) => s + signedCount(t), 0)}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-slate-800">
                       {fmt.inr(currentData.reduce((s, t) => s + signedAmount(t), 0))}
