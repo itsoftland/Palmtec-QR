@@ -6,9 +6,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_datetime
 
-from ...models.company import ETMDevice
+from ...models.company import ETMDevice, TamperedDeviceHistory
 from ...permissions import LicensePermission
 
 
@@ -103,8 +105,22 @@ def refresh_scert_key(request):
 
     otp = generate_otp()
 
-    device.tamper_status = True
-    device.save()
+    # Validate datetime format
+    parsed_tamper_at = parse_datetime(tamper_at)
+
+
+    # Update device and create history atomically
+    with transaction.atomic():
+
+        device.tamper_status = True
+        device.save(update_fields=["tamper_status"])
+
+        TamperedDeviceHistory.objects.create(
+            device=device,
+            company=company_instance,
+            tampered_at=parsed_tamper_at,
+        )
+
 
     return Response(
         {
@@ -141,10 +157,36 @@ def reset_device_tamper_status(request):
         company=company_instance
     )
 
-    device.scert_code = new_key
-    device.tamper_status = False
+    tampered_device_details = TamperedDeviceHistory.objects.filter(
+        device=device,
+        company=company_instance,
+    ).order_by("-created_at").first()
 
-    device.save()
+    parsed_untamper_at = parse_datetime(untamper_at)
+    
+    # Update device and history atomically
+    with transaction.atomic():
+
+        device.scert_code = new_key
+        device.tamper_status = False
+
+        device.save(
+            update_fields=["scert_code", "tamper_status"]
+        )
+
+        tampered_device_details.untampered_by = user
+        tampered_device_details.untampered_at = parsed_untamper_at
+        tampered_device_details.status = (
+            TamperedDeviceHistory.TamperStatus.UNTAMPERED
+        )
+
+        tampered_device_details.save(
+            update_fields=[
+                "untampered_by",
+                "untampered_at",
+                "status",
+            ]
+        )
 
     return Response(
         {

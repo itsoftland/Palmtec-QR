@@ -526,7 +526,6 @@ class ETMDevice(models.Model):
 class TamperedDeviceHistory(models.Model):
 
     class TamperStatus(models.TextChoices):
-        NEW = "new", "New"
         TAMPERED = "tampered", "Tampered"
         UNTAMPERED = "untampered", "Untampered"
 
@@ -550,7 +549,7 @@ class TamperedDeviceHistory(models.Model):
     status = models.CharField(
         max_length=10,
         choices=TamperStatus.choices,
-        default=TamperStatus.NEW
+        default=TamperStatus.TAMPERED
     )
 
     untampered_by = models.ForeignKey(
