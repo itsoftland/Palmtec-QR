@@ -151,9 +151,6 @@ export default function ExpenseDataPage() {
                     <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3">
                         <p className="text-sm font-medium text-slate-800">{r.expense_name || '—'}</p>
-                        {r.expense_code && (
-                          <p className="text-xs text-slate-400 font-mono">{r.expense_code}</p>
-                        )}
                       </td>
                       <td className="px-5 py-3 text-sm font-semibold text-slate-800">{formatAmt(r.expense_amount)}</td>
                       <td className="px-5 py-3 text-sm text-slate-700">{r.date}</td>
