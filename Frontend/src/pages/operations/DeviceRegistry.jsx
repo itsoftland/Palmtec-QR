@@ -438,6 +438,7 @@ export default function DeviceRegistry() {
               )}
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Serial Number</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Tamper Status</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Dealer</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Company</th>
               {isCompanyAdmin && (
@@ -453,10 +454,10 @@ export default function DeviceRegistry() {
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeleton columns={["w-8","w-32","w-24","w-28","w-32","w-24"]} />
+              <TableSkeleton columns={["w-8","w-32","w-24","w-24","w-28","w-32","w-24"]} />
             ) : devices.length === 0 ? (
               <tr>
-                <td colSpan={isSuperadmin ? 6 : 5} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={isSuperadmin ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
                   No devices found
                 </td>
               </tr>
@@ -474,6 +475,11 @@ export default function DeviceRegistry() {
                 )}
                 <td className="px-4 py-3 font-mono text-xs text-slate-800 font-medium">{device.serial_number}</td>
                 <td className="px-4 py-3"><StatusBadge value={displayStatus(device)} /></td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${device.tamper_status ? "bg-red-100 text-red-700 border-red-300" : "bg-green-100 text-green-700 border-green-300"}`}>
+                    {device.tamper_status ? "Tampered" : "Normal"}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-slate-500 text-xs">{device.dealer_name ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-700 text-xs">{device.company_name ?? <span className="text-slate-300 italic">Unassigned</span>}</td>
                 {isCompanyAdmin && (

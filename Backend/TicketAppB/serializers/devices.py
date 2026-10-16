@@ -20,6 +20,7 @@ class ETMDeviceSerializer(serializers.ModelSerializer):
             'dealer_name',
             'allocation_status',
             'is_active',
+            'tamper_status',
             'created_by',
             'created_at',
             'updated_at',

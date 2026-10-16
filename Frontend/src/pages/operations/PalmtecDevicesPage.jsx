@@ -206,16 +206,17 @@ export default function PalmtecDevicesPage() {
             <tr>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Serial Number</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Palmtec ID</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Tamper Status</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Payment Aggregator TID</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Assigned User</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeleton columns={['w-40', 'w-28', 'w-28', 'w-28']} />
+              <TableSkeleton columns={['w-40', 'w-28', 'w-24', 'w-28', 'w-28']} />
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={5}className="px-4 py-10 text-center text-slate-400">
                   No devices found.
                 </td>
               </tr>
@@ -243,6 +244,11 @@ export default function PalmtecDevicesPage() {
                   )}
                 </td>
                 <td className="px-4 py-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${device.tamper_status ? 'bg-red-100 text-red-700 border-red-300' : 'bg-green-100 text-green-700 border-green-300'}`}>
+                    {device.tamper_status ? 'Tampered' : 'Normal'}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
                   {device.aggregator_tid ? (
                     <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200">
                       {device.aggregator_tid}
@@ -267,8 +273,14 @@ export default function PalmtecDevicesPage() {
                     ) : (
                       <button
                         onClick={() => openAssignModal(device)}
-                        disabled={device.allocation_status !== 'Allocated'}
-                        title={device.allocation_status !== 'Allocated' ? 'Device must be allocated to your company first' : ''}
+                        disabled={device.allocation_status !== 'Allocated' || device.tamper_status}
+                        title={
+                          device.tamper_status
+                            ? 'Device is tampered and cannot be assigned'
+                            : device.allocation_status !== 'Allocated'
+                              ? 'Device must be allocated to your company first'
+                              : ''
+                        }
                         className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-50"
                       >
                         Assign
