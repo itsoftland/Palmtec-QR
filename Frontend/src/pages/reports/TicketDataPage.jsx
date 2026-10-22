@@ -338,9 +338,8 @@ function TicketDetailModal({ ticket: t, onClose }) {
 
           {/* UPI reference — only when payment is UPI */}
           {isUpi && (
-            <FieldGroup title="UPI Reference" columns={3}>
+            <FieldGroup title="UPI Reference" columns={2}>
               <FieldBlock label="Transaction ID"   value={t.transaction_id || '—'} />
-              <FieldBlock label="Reference Number" value={t.reference_number || '—'} />
               <FieldBlock
                 label="UPI Verification"
                 value={t.manual_verified_upi === true ? 'Manual' : t.manual_verified_upi === false ? 'Auto' : '—'}
