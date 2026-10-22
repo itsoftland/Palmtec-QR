@@ -769,7 +769,7 @@ export default function TicketDataPage() {
         <div className="lg:col-span-6 grid grid-cols-2 gap-4">
           <KpiCard title="UPI Tickets"    value={isRefreshing ? '...' : String(summary.upiCount)}  subtitle={fmt.inr(summary.upiAmt)}  icon={CreditCard} color="#3b82f6" loading={isRefreshing} />
           <KpiCard title="Cash Tickets"   value={isRefreshing ? '...' : String(summary.cashCount)} subtitle={fmt.inr(summary.cashAmt)} icon={Banknote}   color="#f59e0b" loading={isRefreshing} />
-          <KpiCard title="Avg per Ticket" value={isRefreshing ? '...' : fmt.inr(summary.amount / Math.max(1, filteredData.length))}    icon={Ticket}     color="#6366f1" loading={isRefreshing} />
+          <KpiCard title="Avg per Ticket" value={isRefreshing ? '...' : fmt.inr(summary.tickets > 0 ? summary.amount / summary.tickets : 0)}    icon={Ticket}     color="#6366f1" loading={isRefreshing} />
           <KpiCard title="Active Devices" value={isRefreshing ? '...' : String(summary.devices)} subtitle="reporting" icon={Cpu}      color="#8b5cf6" loading={isRefreshing} />
         </div>
       </div>
