@@ -7,6 +7,23 @@ from ..models import (
 )
 
 
+class StripNullCharsMixin:
+    """Fixed-width device/MDB strings can carry \x00 padding; DRF CharField rejects it."""
+
+    @staticmethod
+    def _strip_nulls(value):
+        return value.replace('\x00', '').rstrip() if isinstance(value, str) else value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return {k: self._strip_nulls(v) for k, v in data.items()}
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'items'):
+            data = {k: self._strip_nulls(v) for k, v in data.items()}
+        return super().to_internal_value(data)
+
+
 class BusTypeSerializer(serializers.ModelSerializer):
     company    = serializers.PrimaryKeyRelatedField(read_only=True)
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -183,7 +200,7 @@ def _validate_password_not_blank(value):
     return value
 
 
-class SettingsSerializer(serializers.ModelSerializer):
+class SettingsSerializer(StripNullCharsMixin, serializers.ModelSerializer):
     company    = serializers.PrimaryKeyRelatedField(read_only=True)
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -214,6 +231,7 @@ class SettingsSerializer(serializers.ModelSerializer):
             'uploadpath', 'downloadpath', 'http_url',
             'smart_card', 'exp_enable', 'ftp_enable', 'gprs_enable_message', 'sendbill_enable',
             'user_pwd', 'master_pwd', 'currency',
+            'sms_no1', 'sms_no2', 'sms_no3', 'sms_sending_enable', 'sms_prompt_enable',
             'company', 'created_by', 'updated_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'company', 'created_by', 'updated_by', 'created_at', 'updated_at']
@@ -339,7 +357,7 @@ class FareSerializer(serializers.ModelSerializer):
         return value
 
 
-class SettingsProfileSerializer(serializers.ModelSerializer):
+class SettingsProfileSerializer(StripNullCharsMixin, serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     updated_by = serializers.PrimaryKeyRelatedField(read_only=True)
     company    = serializers.PrimaryKeyRelatedField(read_only=True)

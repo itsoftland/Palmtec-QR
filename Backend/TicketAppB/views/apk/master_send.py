@@ -166,7 +166,12 @@ def _pack_busdat(p, cs):
     data += b'\x00' * 4                      # shd_opn_t
     data += b'\x00' * 4                      # trp_opn_d
     data += b'\x00' * 4                      # trp_opn_t
-    data += b'\x00' * 51                     # ucTemp
+    data += _s(cs.sms_no1 if cs else '', 13) # SmsNo1 — company Settings
+    data += _s(cs.sms_no2 if cs else '', 13) # SmsNo2 — company Settings
+    data += _s(cs.sms_no3 if cs else '', 13) # SmsNo3 — company Settings
+    data += _bool(cs.sms_sending_enable if cs else False)  # SmsSendingEnable — company Settings
+    data += _bool(cs.sms_prompt_enable if cs else False)   # SmsPromptEnable — company Settings
+    data += b'\x00' * 10                     # ucTemp (was 51; 41 bytes used by SMS fields)
 
     # ── HARDWARE_SETUP section (64 bytes) ──────────────────────────────────────
     # Ptime (4 bytes): Hour, Min, Sec, Hundredths — zeroed (device sets its own clock)

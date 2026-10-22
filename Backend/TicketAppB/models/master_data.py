@@ -610,6 +610,13 @@ class Settings(models.Model):
 
     currency = models.CharField(max_length=3, null=True, blank=True)
 
+    # SMS settings
+    sms_no1 = models.CharField(max_length=20, null=True, blank=True)
+    sms_no2 = models.CharField(max_length=20, null=True, blank=True)
+    sms_no3 = models.CharField(max_length=20, null=True, blank=True)
+    sms_sending_enable = models.BooleanField(default=False)
+    sms_prompt_enable = models.BooleanField(default=False)
+
     # ETM concession ratios & flags (sourced from MDB import)
     ladies_ratio  = models.IntegerField(default=0, help_text="Ladies concession % (LadiPer)")
     senior_ratio  = models.IntegerField(default=0, help_text="Senior citizen concession % (SeniorPer)")
