@@ -522,15 +522,17 @@ function SettingsFormFields({ formData, onChange, loading = false, isDevice = tr
 
       {!isDevice && (
         <SectionCard title="SMS Settings" icon={Smartphone}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <ConstrainedField label="SMS Number 1" name="sms_no1" value={formData.sms_no1} onChange={onChange} maxLen={13} placeholder="e.g. 9876543210" loading={loading} required={false} />
-            <ConstrainedField label="SMS Number 2" name="sms_no2" value={formData.sms_no2} onChange={onChange} maxLen={13} placeholder="e.g. 9876543210" loading={loading} required={false} />
-            <ConstrainedField label="SMS Number 3" name="sms_no3" value={formData.sms_no3} onChange={onChange} maxLen={13} placeholder="e.g. 9876543210" loading={loading} required={false} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <SettToggle label="SMS Sending Enable" checked={!!formData.sms_sending_enable} onChange={tog('sms_sending_enable')} />
             <SettToggle label="SMS Prompt Enable" checked={!!formData.sms_prompt_enable} onChange={tog('sms_prompt_enable')} />
           </div>
+          {formData.sms_sending_enable && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+              <ConstrainedField label="SMS Number 1" name="sms_no1" value={formData.sms_no1} onChange={onChange} maxLen={13} placeholder="e.g. 9876543210" loading={loading} required={false} />
+              <ConstrainedField label="SMS Number 2" name="sms_no2" value={formData.sms_no2} onChange={onChange} maxLen={13} placeholder="e.g. 9876543210" loading={loading} required={false} />
+              <ConstrainedField label="SMS Number 3" name="sms_no3" value={formData.sms_no3} onChange={onChange} maxLen={13} placeholder="e.g. 9876543210" loading={loading} required={false} />
+            </div>
+          )}
         </SectionCard>
       )}
 
