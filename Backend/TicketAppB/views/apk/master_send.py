@@ -48,6 +48,11 @@ def _i(val):
     except (ValueError, TypeError):
         return struct.pack('<h', 0)
 
+def _phone(val, size=13):
+    """Phone number: digits only, max 12 chars, zero-padded to size."""
+    digits = ''.join(c for c in str(val or '') if c.isdigit())[:12]
+    return digits.encode('ascii').ljust(size, b'\x00')
+
 def _u(val):
     """2-byte little-endian unsigned short."""
     try:
@@ -110,9 +115,9 @@ def _pack_busdat(p, cs):
     data += _bool(p.odometer_entry)
     data += _bool(p.ticket_no_big_font)
     data += b'\x01'                          # CrewCheck — always enabled
-    data += b'\x00' * 13                     # PhNo (zeroed — device uses its own)
-    data += b'\x01'                          # TripSMS — always enabled
-    data += _bool(p.schedulesend_enable)     # ScheduleSMS
+    data += _phone(cs.sms_no1 if cs else '') # PhNo (field 42) — SMS number 1, company Settings
+    data += _bool(cs.sms_sending_enable if cs else False)  # TripSMS (field 43) — SMS sending enable, company Settings
+    data += _bool(cs.sms_prompt_enable if cs else False)   # ScheduleSMS (field 44) — SMS prompt enable, company Settings
     data += b'\x01'                          # TicketRpt — always enabled
     data += b'\x01'                          # Busno — always enabled
     data += b'\x01'                          # Driver — always enabled
@@ -123,7 +128,7 @@ def _pack_busdat(p, cs):
     data += _bool(p.tripsend_enable)
     data += _bool(p.schedulesend_enable)
     data += _bool(cs.sendpend if cs else False)  # company Settings
-    data += _s(cs.ph_no2 if cs else '', 13)      # company Settings
+    data += _phone(cs.sms_no2 if cs else '')     # ph_no2 (field 55) — SMS number 2, company Settings
     data += _s(cs.access_point if cs else '', 24) # company Settings
     data += _s(cs.dest_adds if cs else '', 32)    # company Settings
     data += _s(cs.username if cs else '', 16)     # company Settings
@@ -146,7 +151,7 @@ def _pack_busdat(p, cs):
     data += _bool(p.multiple_pass)
     data += _bool(p.inspector_sms)
     data += b'\x00'                          # StageEntry
-    data += _s(cs.ph_no3 if cs else '', 13)  # company Settings
+    data += _phone(cs.sms_no3 if cs else '') # ph_no3 (field 78) — SMS number 3, company Settings
     data += _bool(p.auto_shut_down)
     data += _bool(p.userpswd_enable)
     data += b'\x00'                          # DieselEntryEnable
@@ -166,12 +171,7 @@ def _pack_busdat(p, cs):
     data += b'\x00' * 4                      # shd_opn_t
     data += b'\x00' * 4                      # trp_opn_d
     data += b'\x00' * 4                      # trp_opn_t
-    data += _s(cs.sms_no1 if cs else '', 13) # SmsNo1 — company Settings
-    data += _s(cs.sms_no2 if cs else '', 13) # SmsNo2 — company Settings
-    data += _s(cs.sms_no3 if cs else '', 13) # SmsNo3 — company Settings
-    data += _bool(cs.sms_sending_enable if cs else False)  # SmsSendingEnable — company Settings
-    data += _bool(cs.sms_prompt_enable if cs else False)   # SmsPromptEnable — company Settings
-    data += b'\x00' * 10                     # ucTemp (was 51; 41 bytes used by SMS fields)
+    data += b'\x00' * 51                     # ucTemp
 
     # ── HARDWARE_SETUP section (64 bytes) ──────────────────────────────────────
     # Ptime (4 bytes): Hour, Min, Sec, Hundredths — zeroed (device sets its own clock)
