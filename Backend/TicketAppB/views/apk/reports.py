@@ -840,6 +840,8 @@ def apk_passengers(request):
     status = 'open' if not trip.is_closed else 'closed'
     # Refund tickets (refund_status=1) reduce collection by their refund_amount.
     refund_total = qs.filter(refund_status=1).aggregate(t=Sum('refund_amount'))['t'] or 0
+    # Adjust amount on non-refund tickets is also taken off collection (same as trip report).
+    adjust_total = qs.exclude(refund_status=1).aggregate(t=Sum('adjust_amount'))['t'] or 0
     if status == 'open':
         last_ticket = qs.order_by('-ticket_time').values('to_stage_id_id', 'passenger_count').first()
         if last_ticket and last_ticket['to_stage_id_id']:
@@ -855,11 +857,11 @@ def apk_passengers(request):
         live = qs.aggregate(
             total=Sum('ticket_amount', filter=~Q(refund_status=1)),
         )
-        total_collection = (live['total'] or 0) - refund_total
+        total_collection = (live['total'] or 0) - refund_total - adjust_total
     else:
         current_stage = None
         passengers_in_bus = None
-        total_collection = (trip.total_collection or 0) - refund_total
+        total_collection = (trip.total_collection or 0) - refund_total - adjust_total
 
     # ── Passenger totals ──────────────────────────────────────────────────────
     # Refund ticket (refund_status=1) subtracts its counts; same rule as the ticket report.
