@@ -42,8 +42,9 @@ const signedCount = (t) => {
   return isRefund(t) ? -Math.abs(n) : n;
 };
 const signedAmount = (t) => {
-  const amt = (Number(t.ticket_amount) || 0) - (Number(t.adjust_amount) || 0);
-  return isRefund(t) ? -Math.abs(amt) : amt;
+  // Refund deducts refund_amount (may be partial), not the full ticket amount.
+  if (isRefund(t)) return -Math.abs(Number(t.refund_amount) || 0);
+  return (Number(t.ticket_amount) || 0) - (Number(t.adjust_amount) || 0);
 };
 
 // ─── Featured "total collection" dark card ────────────────────────────────────
