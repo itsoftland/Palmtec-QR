@@ -990,9 +990,20 @@ def duty_report(request):
         if not conductor_name and t['conductor']:
             conductor_name = t['conductor']
 
+        # Refund tickets (refund_status=1) take off refund_amount; other tickets
+        # take off adjust_amount.
+        ded = TransactionData.objects.filter(
+            company_code=user.company,
+            trip_id=t['id'],
+        ).aggregate(
+            refund=Sum('refund_amount', filter=Q(refund_status=1)),
+            adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+        )
+        deductions = (ded['refund'] or 0) + (ded['adjust'] or 0)
+
         if t['is_closed']:
             end_ticket = t['end_ticket_no']
-            collection = str(t['total_collection'])
+            collection = str((t['total_collection'] or 0) - deductions)
         else:
             # Current: also gated on ticket_date — drops tickets punched after midnight
             # under the same still-open trip.
@@ -1016,7 +1027,7 @@ def duty_report(request):
                 trip_id=t['id'],
             ).order_by('-ticket_time').values_list('ticket_number', flat=True).first()
             end_ticket = last_ticket
-            collection = str(live['live_collection'] or '0.00')
+            collection = str((live['live_collection'] or 0) - deductions)
 
         trip_list.append({
             'trip_no': t['trip_no'],
@@ -1065,14 +1076,32 @@ def bus_summary_report(request):
     )
     closed_map = {str(r['start_date']): r['revenue'] or 0 for r in closed_qs}
 
+    # TripData.total_collection is gross: take off refund_amount (refund tickets,
+    # refund_status=1) and adjust_amount (other tickets) of the closed trips' tickets.
+    for r in TransactionData.objects.filter(
+        company_code=user.company,
+        bus_no=bus_no,
+        trip_id__start_date__range=[from_date, to_date],
+        trip_id__is_closed=True,
+    ).values('trip_id__start_date').annotate(
+        refund=Sum('refund_amount', filter=Q(refund_status=1)),
+        adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+    ):
+        key = str(r['trip_id__start_date'])
+        closed_map[key] = closed_map.get(key, 0) - (r['refund'] or 0) - (r['adjust'] or 0)
+
     open_revenue = {
-        str(r['ticket_date']): r['collection'] or 0
+        str(r['ticket_date']): (r['collection'] or 0) - (r['refund'] or 0) - (r['adjust'] or 0)
         for r in TransactionData.objects.filter(
             company_code=user.company,
             bus_no=bus_no,
             ticket_date__range=[from_date, to_date],
             trip_id__is_closed=False,
-        ).values('ticket_date').annotate(collection=Sum('ticket_amount'))
+        ).values('ticket_date').annotate(
+            collection=Sum('ticket_amount', filter=~Q(refund_status=1)),
+            refund=Sum('refund_amount', filter=Q(refund_status=1)),
+            adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+        )
     }
 
     # Distance = sum of odometer run km (end - start) of every schedule the bus
@@ -1137,8 +1166,8 @@ def payment_type_report(request):
     if _is_basic_tier(user) and bus_no != _assigned_bus_no(user):
         return Response(_BUS_ERROR, status=403)
 
-    want_cash = payment_mode in ('', 'cash')
-    want_upi = payment_mode in ('', 'upi')
+    want_cash = payment_mode in ('', 'all', 'cash')
+    want_upi = payment_mode in ('', 'all', 'upi')
 
     closed_map = {}
     for r in TripData.objects.filter(
@@ -1155,6 +1184,25 @@ def payment_type_report(request):
         total = r['total'] or 0
         closed_map[date] = {'cash': total - upi, 'upi': upi}
 
+    # TripData totals are gross: take off refund_amount (refund tickets, refund_status=1)
+    # and adjust_amount (other tickets) of the closed trips' tickets, per payment type.
+    for r in TransactionData.objects.filter(
+        company_code=user.company,
+        bus_no=bus_no,
+        trip_id__start_date__range=[from_date, to_date],
+        trip_id__is_closed=True,
+    ).values('trip_id__start_date').annotate(
+        upi_ded=Coalesce(Sum('refund_amount', filter=Q(refund_status=1, ticket_status='UPI')), Decimal('0'))
+                + Coalesce(Sum('adjust_amount', filter=~Q(refund_status=1) & Q(ticket_status='UPI')), Decimal('0')),
+        all_ded=Coalesce(Sum('refund_amount', filter=Q(refund_status=1)), Decimal('0'))
+                + Coalesce(Sum('adjust_amount', filter=~Q(refund_status=1)), Decimal('0')),
+    ):
+        date = str(r['trip_id__start_date'])
+        upi_ded = r['upi_ded'] or 0
+        entry = closed_map.setdefault(date, {'cash': 0, 'upi': 0})
+        entry['cash'] -= (r['all_ded'] or 0) - upi_ded
+        entry['upi'] -= upi_ded
+
     open_map = {}
     for r in TransactionData.objects.filter(
         company_code=user.company,
@@ -1162,7 +1210,12 @@ def payment_type_report(request):
         ticket_date__range=[from_date, to_date],
         trip_id__is_closed=False,
         ticket_status__in=['Cash', 'UPI'],
-    ).values('ticket_date', 'ticket_status').annotate(amount=Sum('ticket_amount')):
+    ).values('ticket_date', 'ticket_status').annotate(
+        # refund tickets subtract refund_amount; others add ticket_amount - adjust_amount
+        amount=Coalesce(Sum('ticket_amount', filter=~Q(refund_status=1)), Decimal('0'))
+               - Coalesce(Sum('adjust_amount', filter=~Q(refund_status=1)), Decimal('0'))
+               - Coalesce(Sum('refund_amount', filter=Q(refund_status=1)), Decimal('0')),
+    ):
         date = str(r['ticket_date'])
         if date not in open_map:
             open_map[date] = {'cash': 0, 'upi': 0}
@@ -1312,14 +1365,36 @@ def expense_report(request):
         ).values('start_date').annotate(collection=Sum('total_collection'))
     }
 
+    # TripData.total_collection is gross: take off refund_amount (refund tickets)
+    # and adjust_amount (other tickets) of the closed trips' tickets.
+    for r in TransactionData.objects.filter(
+        company_code=user.company,
+        bus_no=bus_no,
+        trip_id__start_date__range=[from_date, to_date],
+        trip_id__is_closed=True,
+    ).values('trip_id__start_date').annotate(
+        refund=Sum('refund_amount', filter=Q(refund_status=1)),
+        adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+    ):
+        key = str(r['trip_id__start_date'])
+        closed_revenue[key] = (
+            closed_revenue.get(key, 0) - (r['refund'] or 0) - (r['adjust'] or 0)
+        )
+
+    # Refund tickets (refund_status=1) subtract refund_amount;
+    # other tickets add ticket_amount - adjust_amount.
     open_revenue = {
-        str(r['ticket_date']): r['collection'] or 0
+        str(r['ticket_date']): (r['collection'] or 0) - (r['refund'] or 0) - (r['adjust'] or 0)
         for r in TransactionData.objects.filter(
             company_code=user.company,
             bus_no=bus_no,
             ticket_date__range=[from_date, to_date],
             trip_id__is_closed=False,
-        ).values('ticket_date').annotate(collection=Sum('ticket_amount'))
+        ).values('ticket_date').annotate(
+            collection=Sum('ticket_amount', filter=~Q(refund_status=1)),
+            refund=Sum('refund_amount', filter=Q(refund_status=1)),
+            adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
+        )
     }
 
     revenue_map = {
