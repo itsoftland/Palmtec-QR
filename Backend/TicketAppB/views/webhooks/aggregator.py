@@ -298,55 +298,30 @@ def aggregator_settlement_data(request):
         transaction.save()
 
 
-        User = get_user_model()
-        company_users = list(User.objects.filter(company=company.company))
-        print(f"Users in company '{company.company}': {company_users}")
-
-
-        print("Active User")
-        active_sessions = FCMSession.objects.filter(
-            user__in=company_users, is_active=True,
-        )
-        for session in active_sessions:
-            
-            # print(f"Active session: user={session.user}, session_uid={session.session_uid}, fcm_token={session.fcm_token}")
-
-            if not session.fcm_token:
-                print("token not found")
-                return
+        if company is not None:
+            active_sessions = FCMSession.objects.filter(
+                user__company=company, is_active=True,
+            ).exclude(fcm_token__isnull=True).exclude(fcm_token='').select_related('user')
             title = "New Transaction"
             body = "A new aggregator transaction has been created."
-            try:
-                send_push_notification(
-                    token=session.fcm_token,
-                    title=title,
-                    body=body,
-                    data={
-                        "type": "aggregator_transaction",
-                    }
-                )
-
-                print("notification send")
-                FCMLog.objects.create(
-                    user=session.user,
-                    token=session.fcm_token,
-                    title=title,
-                    body=body,
-                    status="success",
-                )
-
-            except Exception as e:
-                print(
-                    f"Failed to send FCM notification: {e}"
-                )
-                FCMLog.objects.create(
-                    user=session.user,
-                    token=session.fcm_token,
-                    title=title,
-                    body=body,
-                    status="failed",
-                    error=str(e),
-                )
+            for session in active_sessions:
+                try:
+                    send_push_notification(
+                        token=session.fcm_token,
+                        title=title,
+                        body=body,
+                        data={"type": "aggregator_transaction"},
+                    )
+                    FCMLog.objects.create(
+                        user=session.user, token=session.fcm_token,
+                        title=title, body=body, status="success",
+                    )
+                except Exception as e:
+                    logger_txn.exception("FCM send failed for user=%s: %s", session.user_id, e)
+                    FCMLog.objects.create(
+                        user=session.user, token=session.fcm_token,
+                        title=title, body=body, status="failed", error=str(e),
+                    )
 
         from ...tasks import reconcile_aggregator_transaction
         reconcile_aggregator_transaction.delay(transaction.id)
