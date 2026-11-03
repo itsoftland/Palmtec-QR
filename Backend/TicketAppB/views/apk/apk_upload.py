@@ -371,6 +371,12 @@ def uploadDeviceData(request):
 
     palmtec_id = device.palmtec_id
 
+    print("-------------------------------------------------------------------------------------------------")
+    print([f.name for f in uploaded_files])
+
+    
+
+
     now = timezone.now()
     company_folder  = _safe_path_segment(company.company_name, company.company_id or 'unknown_company')
     username_folder = _safe_path_segment(user.username, 'unknown_user')
@@ -403,6 +409,30 @@ def uploadDeviceData(request):
             saved.append(filename)
             saved_paths.append((f"{now.strftime('%H-%M-%S')}_{filename}", file_path))
 
+            upper_name = filename.upper()
+            try:
+                if upper_name == 'BUS.DAT':
+                    bus = unpack_bus_dat(file_path)
+                    result = _import_bus_dat(bus, company, device, user)
+                    _report_import(filename, palmtec_id, 1,
+                                   int(result == 'created'), int(result != 'created'))
+                elif upper_name == 'INSPECTOR.DAT':
+                    records = unpack_inspector_dat(file_path)
+                    created, skipped = _import_inspector_dat(records, company, palmtec_id, user)
+                    _report_import(filename, palmtec_id, len(records), created, skipped)
+                elif upper_name == 'EXPENSE.DAT':
+                    created, skipped = _parse_expense_dat(file_path, company, palmtec_id)
+                    _report_import(filename, palmtec_id, created + skipped, created, skipped)
+                else:
+                    unpacker = _get_decode_only_unpacker(upper_name)
+                    if unpacker:
+                        decoded = unpacker(file_path)
+                        count = len(decoded) if isinstance(decoded, list) else 1
+                        _report_import(filename, palmtec_id, count)  # not stored in DB
+            except Exception as import_err:
+                print(f"[DEVICE-DATA] {filename}: FAILED - {import_err!r}")  # local test
+                logger.exception("%s import failed: %s", filename, import_err)
+
         logger.info(
             "Device data upload by %s (palmtec_id=%s): saved=%s rejected=%s",
             user, palmtec_id, saved, rejected,
@@ -424,6 +454,419 @@ def uploadDeviceData(request):
     except Exception as e:
         logger.exception("Device data upload failed: %s", e)
         return JsonResponse({'error': 'Upload failed'}, status=500)
+
+
+# ── BUS.DAT / INSPECTOR.DAT unpackers ─────────────────────────────────────────
+# Pure decoders: file path in, plain dict(s) out. No DB writes.
+
+# BUS.DAT = SETUP + HARDWARE_SETUP, 704 bytes. Field order mirrors
+# master_send._pack_busdat. Format codes are struct codes (little-endian, packed).
+_BUSDAT_FIELDS = [
+    # ── SETUP ──
+    ('main_disp', '18s'), ('main_disp2', '23s'),
+    ('bhl1', '32s'), ('bhl2', '32s'), ('bhl3', '32s'), ('bfl1', '32s'), ('bfl2', '32s'),
+    ('paper_feed', 'B'), ('palmtec_id', '6s'), ('default_full', 'B'),
+    ('half_per', 'B'), ('con_per', 'B'), ('st_max_amt', 'f'), ('st_min_con', 'f'),
+    ('phy_per', 'B'), ('luggage_unit_rate_edit', 'B'), ('luggage_unit_rate', 'f'),
+    ('stage_updation', 'B'), ('stage_display_font', 'B'),
+    ('use_duplicate', 'B'), ('use_dup1', 'B'), ('roundoff', 'B'), ('round_up', 'B'),
+    ('currency', '8s'), ('round_amt', 'H'),
+    ('ucb_adjust', 'B'), ('ucb_review_passwd', 'B'), ('ucb_report_passwd', 'B'),
+    ('ucb_st_from_stage', 'B'), ('ucb_st_fare_edit', 'B'),
+    ('master_clear_password', '11s'), ('report_flag', 'B'), ('next_fare_round', 'B'),
+    ('update_stage_msg', 'B'), ('enable_remove_ticket', 'B'), ('enable_stage_font', 'B'),
+    ('enable_stage_default', 'B'), ('printer_sel', 'B'), ('odometer_entry', 'B'),
+    ('ticket_no_big_font', 'B'), ('crew_check', 'B'),
+    ('ph_no', '13s'), ('trip_sms', 'B'), ('schedule_sms', 'B'),
+    ('ticket_rpt', 'B'), ('busno', 'B'), ('driver', 'B'), ('conductor', 'B'),
+    ('inspector_report', 'B'), ('repeat_st', 'B'), ('sendbill_enable', 'B'),
+    ('tripsend_enable', 'B'), ('schedulesend_enable', 'B'), ('sendpend', 'B'),
+    ('ph_no2', '13s'), ('access_point', '24s'), ('dest_adds', '32s'),
+    ('username', '16s'), ('password', '16s'), ('uploadpath', '32s'),
+    ('downloadpath', '32s'), ('http_url', '64s'),
+    ('gprs_enable', 'B'), ('msg_prompt', 'B'), ('exp_enable', 'B'), ('smart_card', 'B'),
+    ('modem_on', 'B'), ('ftp_enable', 'B'), ('remove_password', '11s'),
+    ('stage_report_e_d', 'B'), ('st_roundoff_enable', 'B'), ('st_roundoff_amt', 'h'),
+    ('simple_report', 'B'), ('report_font', 'B'), ('multiple_pass', 'B'),
+    ('inspector_sms', 'B'), ('stage_entry', 'B'), ('ph_no3', '13s'),
+    ('auto_shut_down', 'B'), ('userpswd_enable', 'B'), ('diesel_entry_enable', 'B'),
+    ('trip_time_enable', 'B'), ('trip_close_report', 'B'), ('paper_feed2', 'B'),
+    ('refund_enable', 'B'), ('schedule_close_rpt', 'B'), ('ladies_per', 'B'),
+    ('senior_per', 'B'), ('bigfont_enable', 'B'), ('senior_enable', 'B'),
+    ('ladies_enable', 'B'),
+    ('shd_opn_d', '4s'), ('shd_opn_t', '4s'), ('trp_opn_d', '4s'), ('trp_opn_t', '4s'),
+    ('sms_no1', '13s'), ('sms_no2', '13s'), ('sms_no3', '13s'),
+    ('sms_sending_enable', 'B'), ('sms_prompt_enable', 'B'),
+    ('setup_reserved', '10s'),
+    # ── HARDWARE_SETUP ──
+    ('hw_ptime', '4s'), ('hw_pdate', '4s'),
+    ('msr_pswd', '11s'), ('usr_pswd', '11s'), ('spr_pswd', '11s'),
+    ('val_contrast', 'B'), ('val_brightness', 'B'), ('screensaver_onoff', 'B'),
+    ('backlit_timer', 'B'), ('keyhitdelay', 'B'), ('boarder_en', 'B'),
+    ('dooropen_alert', 'B'), ('paperout_alert', 'B'), ('half_page_printer', 'B'),
+    ('buzz_onoff', 'B'), ('rs232_baud', 'B'), ('ir_baud', 'B'), ('rf_baud', 'B'),
+    ('connecting_medium', 'B'), ('footer_stat', 'B'), ('select_language', 'B'),
+    ('login_mode', 'B'), ('kplite_opt', 'B'), ('shutdown_time', 'H'),
+    ('lang_no', 'B'), ('hw_reserved', '2s'),
+]
+_BUSDAT_FMT  = '<' + ''.join(code for _, code in _BUSDAT_FIELDS)
+_BUSDAT_SIZE = struct.calcsize(_BUSDAT_FMT)   # 704 bytes
+
+# INSPECTOR.DAT = array of INSPECTORDET records, 64 bytes each.
+_INSPECTOR_FMT  = '<8sBB5s12sBBhBB31s'
+_INSPECTOR_SIZE = struct.calcsize(_INSPECTOR_FMT)  # 64 bytes/record
+
+
+def _dat_str(raw):
+    """Fixed-width null/space-padded device string -> str."""
+    return raw.split(b'\x00', 1)[0].decode('ascii', errors='replace').strip()
+
+
+def unpack_bus_dat(file_path):
+    """Decode BUS.DAT into a dict of field name -> value. Raises ValueError on bad size."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+
+    if len(data) < _BUSDAT_SIZE:
+        raise ValueError(f"BUS.DAT too short: {len(data)} bytes, expected {_BUSDAT_SIZE}")
+
+    values = struct.unpack(_BUSDAT_FMT, data[:_BUSDAT_SIZE])
+    result = {}
+    for (name, code), value in zip(_BUSDAT_FIELDS, values):
+        if code.endswith('s'):
+            # hw_ptime/hw_pdate/shd_*/trp_* and reserved blocks are raw bytes, rest are text
+            result[name] = value.hex() if name.endswith(('_reserved', '_d', '_t')) or name in ('hw_ptime', 'hw_pdate') else _dat_str(value)
+        elif code == 'f':
+            result[name] = round(value, 4)
+        else:
+            result[name] = value
+    return result
+
+
+def unpack_inspector_dat(file_path):
+    """Decode INSPECTOR.DAT into a list of inspector-check dicts. Empty slots are skipped."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+
+    records = []
+    for i in range(len(data) // _INSPECTOR_SIZE):
+        chunk = data[i * _INSPECTOR_SIZE:(i + 1) * _INSPECTOR_SIZE]
+        (
+            inspector_id_b, schedule_no, trip_no,
+            route_code_b, stage_b,
+            day, month, year, hour, minutes,
+            _reserved,
+        ) = struct.unpack(_INSPECTOR_FMT, chunk)
+
+        if year == 0 and month == 0 and day == 0:
+            continue  # unwritten record slot
+
+        try:
+            checked_at = datetime(year + 2000, month, day, hour, minutes)
+        except ValueError:
+            continue
+
+        records.append({
+            'inspector_id': _dat_str(inspector_id_b),
+            'schedule_no':  schedule_no,
+            'trip_no':      trip_no,
+            'route_code':   _dat_str(route_code_b),
+            'stage':        _dat_str(stage_b),
+            'checked_at':   checked_at,
+        })
+    return records
+
+
+# ── Other device-file unpackers (decode only, no DB writes) ───────────────────
+# Layouts from mdFunctions.bas / General.bas in the VB6 PVT BUS source.
+
+_PASSCONC_FMT  = '<11sl12sf4sBBBBBBh1s'   # PASS.PAS record, also embedded in RPT01.DAT
+_PASSCONC_SIZE = struct.calcsize(_PASSCONC_FMT)  # 44 bytes
+
+_TICKET_FMT  = '<lBBBBBBBffBBBBB5sBBBfBB10s'     # PTicket (TKTSnn.DAT)
+_TICKET_SIZE = struct.calcsize(_TICKET_FMT)      # 48 bytes
+
+_FAREWISE_FMT  = '<lf'                            # fare_type (FAREWISE.DAT)
+_FAREWISE_SIZE = struct.calcsize(_FAREWISE_FMT)  # 8 bytes
+
+# PReport (RPT01.DAT): 2 longs, 16 singles, 9 ints, PASSCONC, 5 ints, 3 bytes,
+# route code, 10 date/time bytes, depot/crew/bus strings, fare type, 2 ints, 2 singles
+_REPORT_FMT = (
+    '<ll' + '16f' + '9h' + _PASSCONC_FMT[1:] + '5h' + 'BBB' + '5s' + '10B'
+    + '6s11s16s16s16s16s' + 'B' + 'hhff'
+)
+_REPORT_SIZE = struct.calcsize(_REPORT_FMT)      # 256 bytes
+_PASSCONC_FIELDS = 13
+_REPORT_SINGLES = (
+    'in_hand_amount', 'total_coll', 'full_coll', 'half_coll', 'phy_coll',
+    'luggage_coll', 'st_coll', 'adjust_coll', 'total_km', 'cess_amount',
+    'expense_amount', 'warrant_amount', 'deaf_dump_amount', 'operated_km',
+    'diesel_filled', 'cancelled_km',
+)
+_REPORT_INTS = (
+    'full', 'half', 'phy', 'st', 'free', 'adjust', 'conc', 'others', 'lugg',
+)
+
+
+def unpack_version_dat(file_path):
+    """VERSION.DAT -> version string (16-byte fixed field)."""
+    with open(file_path, 'rb') as f:
+        data = f.read(16)
+    return _dat_str(data)
+
+
+def unpack_status_dat(file_path):
+    """STATUS.DAT -> trip/schedule open flags from byte 0 (bit1 = trip open, bit0 = schedule open)."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    if not data:
+        raise ValueError("STATUS.DAT empty")
+    b0 = data[0]
+    return {
+        'trip_closed':     not bool(b0 & 2),
+        'schedule_closed': not bool(b0 & 1),
+        'raw':             data.hex(),
+    }
+
+
+def _decode_passconc(chunk):
+    (
+        pass_no, ticket_no, name, amount, dob,
+        start_period, end_period, start_stage, end_stage, via_stage, trans_id,
+        pass_type, _reserved,
+    ) = struct.unpack(_PASSCONC_FMT, chunk)
+    return {
+        'pass_no':        _dat_str(pass_no),
+        'ticket_no':      ticket_no,
+        'name':           _dat_str(name),
+        'amount':         round(amount, 2),
+        'date_of_birth':  dob.hex(),
+        'starting_period': start_period,
+        'end_period':     end_period,
+        'start_stage':    start_stage,
+        'end_stage':      end_stage,
+        'via_stage':      via_stage,
+        'trans_id':       trans_id,
+        'pass_type':      pass_type,
+    }
+
+
+def unpack_pass_pas(file_path):
+    """PASS.PAS -> list of pass records (PASSCONC, 44 bytes each). Blank slots skipped."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    records = []
+    for i in range(len(data) // _PASSCONC_SIZE):
+        rec = _decode_passconc(data[i * _PASSCONC_SIZE:(i + 1) * _PASSCONC_SIZE])
+        if not rec['pass_no'] and rec['ticket_no'] == 0:
+            continue
+        records.append(rec)
+    return records
+
+
+def unpack_tkts_dat(file_path):
+    """TKTSnn.DAT -> list of ticket dicts (PTicket, 48 bytes). Stops at TicketNo == -1 like the VB reader."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    records = []
+    for i in range(len(data) // _TICKET_SIZE):
+        (
+            ticket_no, frm, to, full, half, st, phy, lugg,
+            amount, luggage, hour, minute, typ, day, month,
+            _temp, trip_no, bus_warrant, refund_sts, refund_amt,
+            ladies, senior, _reserved,
+        ) = struct.unpack(_TICKET_FMT, data[i * _TICKET_SIZE:(i + 1) * _TICKET_SIZE])
+        if ticket_no == -1:
+            break
+        records.append({
+            'ticket_no': ticket_no, 'from_stage': frm, 'to_stage': to,
+            'full': full, 'half': half, 'st': st, 'phy': phy, 'lugg': lugg,
+            'amount': round(amount, 2), 'luggage_amount': round(luggage, 2),
+            'hour': hour, 'minute': minute, 'type': typ, 'day': day, 'month': month,
+            'trip_no': trip_no, 'bus_warrant': bus_warrant,
+            'refund_status': refund_sts, 'refund_amount': round(refund_amt, 2),
+            'ladies_count': ladies, 'senior_count': senior,
+        })
+    return records
+
+
+def unpack_farewise_dat(file_path):
+    """FAREWISE.DAT -> list of {ticket_no, fare} (fare_type, 8 bytes each). Stops at ticket_no == -1."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    records = []
+    for i in range(len(data) // _FAREWISE_SIZE):
+        ticket_no, fare = struct.unpack(_FAREWISE_FMT, data[i * _FAREWISE_SIZE:(i + 1) * _FAREWISE_SIZE])
+        if ticket_no == -1:
+            break
+        records.append({'ticket_no': ticket_no, 'fare': round(fare, 2)})
+    return records
+
+
+def unpack_rpt01_dat(file_path):
+    """RPT01.DAT -> list of trip report dicts (PReport, 256 bytes each). Stops at schedule == 0."""
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    records = []
+    for i in range(len(data) // _REPORT_SIZE):
+        v = struct.unpack(_REPORT_FMT, data[i * _REPORT_SIZE:(i + 1) * _REPORT_SIZE])
+        rec = {'start_ticket_no': v[0], 'end_ticket_no': v[1]}
+        pos = 2
+        for name in _REPORT_SINGLES:
+            rec[name] = round(v[pos], 2)
+            pos += 1
+        for name in _REPORT_INTS:
+            rec[name] = v[pos]
+            pos += 1
+        rec['general_pass'] = _decode_passconc(
+            struct.pack(_PASSCONC_FMT, *v[pos:pos + _PASSCONC_FIELDS])
+        )
+        pos += _PASSCONC_FIELDS
+        (rec['season_pass'], rec['warrant'], rec['deaf_and_dump'],
+         rec['cess_count'], rec['total_passenger']) = v[pos:pos + 5]
+        pos += 5
+        schedule, trip_no, up_down = v[pos:pos + 3]
+        pos += 3
+        if schedule == 0:
+            break
+        route_code = _dat_str(v[pos]); pos += 1
+        sd, smo, sy, sh, sm, ed, emo, ey, eh, em = v[pos:pos + 10]
+        pos += 10
+        depot_code, depot_name, driver, conductor, cleaner, busno = (_dat_str(x) for x in v[pos:pos + 6])
+        pos += 6
+        fare_type = v[pos]; pos += 1
+        ladies_count, senior_count, ladies_coll, senior_coll = v[pos:pos + 4]
+        rec.update({
+            'schedule_no': schedule, 'trip_no': trip_no, 'up_down_trip': up_down,
+            'route_code': route_code,
+            'start': {'d': sd, 'm': smo, 'y': sy, 'h': sh, 'min': sm},
+            'end':   {'d': ed, 'm': emo, 'y': ey, 'h': eh, 'min': em},
+            'depot_code': depot_code, 'depot_name': depot_name,
+            'driver': driver, 'conductor': conductor, 'cleaner': cleaner, 'bus_no': busno,
+            'fare_type': fare_type,
+            'ladies_count': ladies_count, 'senior_count': senior_count,
+            'ladies_coll': round(ladies_coll, 2), 'senior_coll': round(senior_coll, 2),
+        })
+        records.append(rec)
+    return records
+
+
+# Decode-only files: name (or TKTS prefix) -> unpacker. Result is printed/logged, not stored.
+def _get_decode_only_unpacker(upper_name):
+    if upper_name.startswith('TKTS') and upper_name.endswith('.DAT'):
+        return unpack_tkts_dat
+    return {
+        'VERSION.DAT':  unpack_version_dat,
+        'STATUS.DAT':   unpack_status_dat,
+        'PASS.PAS':     unpack_pass_pas,
+        'FAREWISE.DAT': unpack_farewise_dat,
+        'RPT01.DAT':    unpack_rpt01_dat,
+    }.get(upper_name)
+
+
+def _report_import(filename, palmtec_id, unpacked, created=None, skipped=None):
+    """Print + log one clear summary line per file. created/skipped None = file is decode-only (not stored)."""
+    if created is None:
+        line = f"[DEVICE-DATA] {filename} (palmtec_id={palmtec_id}): unpacked={unpacked} | not stored in DB"
+    else:
+        line = (f"[DEVICE-DATA] {filename} (palmtec_id={palmtec_id}): "
+                f"unpacked={unpacked} | created={created} | skipped={skipped}")
+    print(line)  # local test
+    logger.info(line)
+
+
+def _import_bus_dat(bus, company, device, user):
+    """
+    Create a SettingsProfile from unpacked BUS.DAT if the device has none yet.
+    Existing profile is never overwritten (DB is source of truth).
+    Returns 'created' or 'exists'.
+    """
+    from ...models import SettingsProfile
+
+    try:
+        palmtec_id = int(device.palmtec_id)
+    except (TypeError, ValueError):
+        palmtec_id = int(bus['palmtec_id'] or 0)
+
+    if (SettingsProfile.objects.filter(device=device).exists()
+            or SettingsProfile.objects.filter(company=company, palmtec_id=palmtec_id).exists()):
+        return 'exists'
+
+    SettingsProfile.objects.create(
+        company=company,
+        device=device,
+        name=f"Imported {palmtec_id}",
+        palmtec_id=palmtec_id,
+        user_pwd=bus['usr_pswd'], master_pwd=bus['msr_pswd'],
+        supervisor_pwd=bus['spr_pswd'], remove_pwd=bus['remove_password'],
+        half_per=bus['half_per'], con_per=bus['con_per'], phy_per=bus['phy_per'],
+        round_amt=bus['round_amt'], luggage_unit_rate=round(bus['luggage_unit_rate'], 2),
+        main_display=bus['main_disp'], main_display2=bus['main_disp2'],
+        header1=bus['bhl1'], header2=bus['bhl2'], header3=bus['bhl3'],
+        footer1=bus['bfl1'], footer2=bus['bfl2'],
+        language_option=bus['select_language'], report_font=bus['report_font'],
+        st_fare_edit=bool(bus['ucb_st_fare_edit']),
+        st_max_amt=str(int(bus['st_max_amt'])),
+        st_roundoff_enable=bool(bus['st_roundoff_enable']),
+        st_roundoff_amt=str(bus['st_roundoff_amt']),
+        roundoff=bool(bus['roundoff']), round_up=bool(bus['round_up']),
+        remove_ticket_flag=bool(bus['enable_remove_ticket']),
+        stage_font_flag=bool(bus['enable_stage_font']),
+        next_fare_flag=bool(bus['next_fare_round']),
+        odometer_entry=bool(bus['odometer_entry']),
+        ticket_no_big_font=bool(bus['ticket_no_big_font']),
+        tripsend_enable=bool(bus['tripsend_enable']),
+        schedulesend_enable=bool(bus['schedulesend_enable']),
+        inspect_rpt=bool(bus['inspector_report']),
+        multiple_pass=bool(bus['multiple_pass']),
+        simple_report=bool(bus['simple_report']),
+        inspector_sms=bool(bus['inspector_sms']),
+        auto_shut_down=bool(bus['auto_shut_down']),
+        userpswd_enable=bool(bus['userpswd_enable']),
+        exp_enable=bool(bus['exp_enable']),
+        stage_updation_msg=bus['update_stage_msg'],
+        created_by=user, updated_by=user,
+    )
+    return 'created'
+
+
+def _import_inspector_dat(records, company, palmtec_id, user):
+    """
+    Insert unpacked INSPECTOR.DAT rows into InspectorDetails, skipping rows
+    already in DB. Inspector matched by Employee.employee_code; unmatched
+    inspectors are skipped (FK is required). Returns (created, skipped).
+    """
+    from ...models import InspectorDetails, Employee
+
+    created = skipped = 0
+    for rec in records:
+        inspector = Employee.objects.filter(
+            company=company, employee_code=rec['inspector_id'], is_deleted=False
+        ).first()
+        if not inspector:
+            skipped += 1
+            continue
+
+        _, was_created = InspectorDetails.objects.get_or_create(
+            company=company,
+            palmtec_id=str(palmtec_id),
+            inspector=inspector,
+            schedule_no=rec['schedule_no'],
+            trip_no=rec['trip_no'],
+            date=rec['checked_at'].date(),
+            time=rec['checked_at'].time(),
+            defaults={
+                'station_no': rec['stage'],
+                'tripmaster_ref_id': '',
+                'created_by': user,
+                'updated_by': user,
+            },
+        )
+        if was_created:
+            created += 1
+        else:
+            skipped += 1
+    return created, skipped
 
 
 # Files pulled back from FTP that we know how to decode into DB rows.

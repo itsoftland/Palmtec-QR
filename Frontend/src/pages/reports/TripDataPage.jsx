@@ -172,7 +172,6 @@ function TripRow({ trip, onView, isNew }) {
                 ) : (
                   <span>
                     {fmt.duration(trip.start_datetime, trip.end_datetime)}
-                    {trip.total_km ? ` · ${trip.total_km}km` : ''}
                   </span>
                 )}
               </p>
@@ -304,8 +303,7 @@ function TripDetailModal({ trip, onClose }) {
                 </p>
                 {!isOpen && (
                   <p className="text-[11px] text-slate-500">
-                    {trip.total_km ? `${trip.total_km} km` : ''}
-                    {trip.end_ticket_no && trip.start_ticket_no ? ` · ${trip.end_ticket_no - trip.start_ticket_no} tickets issued` : ''}
+                    {trip.end_ticket_no && trip.start_ticket_no ? `${trip.end_ticket_no - trip.start_ticket_no} tickets issued` : ''}
                   </p>
                 )}
               </div>
@@ -644,7 +642,6 @@ export default function TripDataPage() {
       { header: 'End DateTime',      key: 'end_datetime',         width: 20 },
       { header: 'Start Ticket No',   key: 'start_ticket_no',      width: 16 },
       { header: 'End Ticket No',     key: 'end_ticket_no',        width: 14 },
-      { header: 'Total KM',          key: 'total_km',             width: 12 },
       { header: 'Total Tickets',     key: 'total_tickets',        width: 14 },
       { header: 'Total Passengers',  key: 'total_passengers',     width: 16 },
       { header: 'UPI Tickets',       key: 'upi_ticket_count',     width: 14 },
