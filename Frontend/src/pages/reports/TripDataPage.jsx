@@ -580,7 +580,8 @@ export default function TripDataPage() {
     open:       filteredData.filter(t => t.status === 'open').length,
     closed:     filteredData.filter(t => t.status === 'closed').length,
     passengers: filteredData.reduce((s, t) => s + (t.total_passengers || 0), 0),
-    collection: filteredData.reduce((s, t) => s + netCollection(t), 0),
+    // sum in paise to avoid float drift so total equals the sum of each trip's collection exactly
+    collection: filteredData.reduce((s, t) => s + Math.round(netCollection(t) * 100), 0) / 100,
     upi:        filteredData.reduce((s, t) => s + Number(t.upi_ticket_amount || 0), 0),
   };
 
@@ -747,7 +748,7 @@ export default function TripDataPage() {
         <KpiCard title="In Progress"   value={isRefreshing ? '...' : String(summary.open)}       icon={PlayCircle}   color="#f59e0b" subtitle="running now" loading={isRefreshing} />
         <KpiCard title="Closed"        value={isRefreshing ? '...' : String(summary.closed)}     icon={CheckCircle2} color="#10b981" loading={isRefreshing} />
         <KpiCard title="Passengers"    value={isRefreshing ? '...' : String(summary.passengers)} icon={Users}        color="#8b5cf6" loading={isRefreshing} />
-        <KpiCard title="Collection"    value={isRefreshing ? '...' : fmt.inrK(summary.collection)} icon={IndianRupee} color="#059669" loading={isRefreshing} />
+        <KpiCard title="Collection"    value={isRefreshing ? '...' : fmt.inr(summary.collection)} icon={IndianRupee} color="#059669" loading={isRefreshing} />
         <KpiCard title="UPI Share"     value={isRefreshing ? '...' : fmt.inrK(summary.upi)}      icon={CreditCard}   color="#3b82f6"
           subtitle={summary.collection > 0 ? `${Math.round(summary.upi / summary.collection * 100)}% of total` : ''}
           loading={isRefreshing} />

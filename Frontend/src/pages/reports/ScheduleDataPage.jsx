@@ -590,7 +590,8 @@ export default function ScheduleDataPage() {
     trips:      filteredData.reduce((a, s) => a + (s.trips_count || 0), 0),
     km:         filteredData.reduce((a, s) => a + Number(s.total_run_km || 0), 0),
     tickets:    filteredData.reduce((a, s) => a + (s.total_tickets || 0), 0),
-    collection: filteredData.reduce((a, s) => a + Number(s.total_collection || 0), 0),
+    // sum in paise so total equals the sum of each schedule's collection exactly
+    collection: filteredData.reduce((a, s) => a + Math.round(Number(s.total_collection || 0) * 100), 0) / 100,
   };
 
   // Pagination
@@ -763,7 +764,7 @@ export default function ScheduleDataPage() {
         <KpiCard title="Trips Run"       value={isRefreshing ? '...' : String(summary.trips)}      icon={Route}        color="#8b5cf6" loading={isRefreshing} />
         <KpiCard title="Total KM"        value={isRefreshing ? '...' : fmt.km(summary.km)}         icon={Gauge}        color="#7c3aed" loading={isRefreshing} />
         <KpiCard title="Tickets Issued"  value={isRefreshing ? '...' : String(summary.tickets)}    icon={Ticket}       color="#6366f1" loading={isRefreshing} />
-        <KpiCard title="Total Collection" value={isRefreshing ? '...' : fmt.inrK(summary.collection)} icon={IndianRupee} color="#059669" loading={isRefreshing} />
+        <KpiCard title="Total Collection" value={isRefreshing ? '...' : fmt.inr(summary.collection)} icon={IndianRupee} color="#059669" loading={isRefreshing} />
       </div>
 
       {/* Filters */}
