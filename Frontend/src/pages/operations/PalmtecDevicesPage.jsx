@@ -206,17 +206,16 @@ export default function PalmtecDevicesPage() {
             <tr>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Serial Number</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Palmtec ID</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Tamper Status</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Payment Aggregator TID</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-700">Assigned User</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableSkeleton columns={['w-40', 'w-28', 'w-24', 'w-28', 'w-28']} />
+              <TableSkeleton columns={['w-40', 'w-28', 'w-28', 'w-28']} />
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={5}className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={4} className="px-4 py-10 text-center text-slate-400">
                   No devices found.
                 </td>
               </tr>
@@ -242,11 +241,6 @@ export default function PalmtecDevicesPage() {
                       Set ID
                     </button>
                   )}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${device.tamper_status ? 'bg-red-100 text-red-700 border-red-300' : 'bg-green-100 text-green-700 border-green-300'}`}>
-                    {device.tamper_status ? 'Tampered' : 'Normal'}
-                  </span>
                 </td>
                 <td className="px-4 py-3">
                   {device.aggregator_tid ? (
