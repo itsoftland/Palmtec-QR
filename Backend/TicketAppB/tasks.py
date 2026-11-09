@@ -1590,15 +1590,16 @@ def poll_company_license(self, company_id: int) -> None:
     """
     import logging
     log = logging.getLogger(__name__)
+    log_ticket = logging.getLogger('ticket.palmtec.ticket_data')
 
     from .views.web.company import poll_license_authentication, _parse_license_date, extract_basic_user_count
 
-    log.info(f'[poll_company_license] Starting for company_id={company_id}')
+    log_ticket.info(f'[poll_company_license] Starting for company_id={company_id}')
 
     try:
         company = Company.objects.get(id=company_id)
     except Company.DoesNotExist:
-        log.error(f'[poll_company_license] Company {company_id} not found — aborting')
+        log_ticket.info(f'ERROR :- [poll_company_license] Company {company_id} not found — aborting')
         return
 
     # Dealer-created companies keep their slot counts from the dealer's pool —
@@ -1610,14 +1611,14 @@ def poll_company_license(self, company_id: int) -> None:
         auth_result = poll_license_authentication(company.company_id)
 
         if not auth_result['success']:
-            log.error(f'[poll_company_license] Polling failed for {company_id}: {auth_result.get("error")}')
+            log_ticket.info(f'ERROR :- [poll_company_license] Polling failed for {company_id}: {auth_result.get("error")}')
             company.authentication_status = Company.AuthStatus.PENDING
             company.save(update_fields=['authentication_status'])
             return
 
         auth_data   = auth_result.get('data', {})
         auth_status = auth_result['status']
-        log.info(f'[poll_company_license] Result: {auth_status} for company {company.company_name}')
+        log_ticket.info(f'[poll_company_license] Result: {auth_status} for company {company.company_name}')
 
         if auth_status == 'Approve':
             company.authentication_status = Company.AuthStatus.APPROVED
@@ -1626,6 +1627,9 @@ def poll_company_license(self, company_id: int) -> None:
             company.authentication_status = Company.AuthStatus.EXPIRED
         elif auth_status == 'Block':
             company.authentication_status = Company.AuthStatus.BLOCKED
+
+
+        log_ticket.info(f"AUTHENTICATION STATUA :- {company.authentication_status}")
 
         if auth_status == 'Approve':
             def _safe_int(val, default=0):
@@ -1646,8 +1650,8 @@ def poll_company_license(self, company_id: int) -> None:
             # Consistency check only applies to the counts we're about to
             # write — skip it for dealer companies, whose counts stay as-is.
             if not is_dealer_company and number_of_licences > 0 and (palmtec_count + total_user_count) > number_of_licences:
-                log.error(
-                    f'[poll_company_license] License config error for {company.company_name}: '
+                log_ticket.info(
+                    f'ERROR :- [poll_company_license] License config error for {company.company_name}: '
                     f'palmtec({palmtec_count}) + users({total_user_count}) > '
                     f'NumberOfLicence({number_of_licences})'
                 )
@@ -1675,10 +1679,10 @@ def poll_company_license(self, company_id: int) -> None:
                 company.basic_user_count         = basic_user_count
 
         company.save()
-        log.info(f'[poll_company_license] Updated company {company_id} → {company.authentication_status}')
+        log_ticket.info(f'[poll_company_license] Updated company {company_id} → {company.authentication_status}')
 
     except Exception as exc:
-        log.exception(f'[poll_company_license] Unexpected error for company {company_id}: {exc}')
+        log_ticket.info(f'ERROR :- [poll_company_license] Unexpected error for company {company_id}: {exc}')
         raise self.retry(exc=exc, countdown=120)
 
     finally:
@@ -1691,8 +1695,10 @@ def poll_company_license(self, company_id: int) -> None:
             if company.authentication_status == Company.AuthStatus.VALIDATING:
                 company.authentication_status = Company.AuthStatus.PENDING
                 company.save(update_fields=['authentication_status'])
+                log_ticket.info(f"AUTHENTICATION STATUA :- {company.authentication_status}")
+
         except Exception as e:
-            log.error(f'[poll_company_license] Could not reset VALIDATING for {company_id}: {e}')
+            log_ticket.info(f'ERROR :- [poll_company_license] Could not reset VALIDATING for {company_id}: {e}')
 
 
 import logging as _recon_logger

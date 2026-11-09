@@ -30,6 +30,8 @@ from ...models import AuditLog
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+log_ticket = logging.getLogger('ticket.palmtec.ticket_data')
+
 _STATES_DISTRICTS = json.loads(
     (Path(__file__).resolve().parent.parent.parent / 'utils' / 'indiaStatesDistricts.json').read_text()
 )
@@ -205,13 +207,13 @@ def poll_license_authentication(customer_id, timeout_seconds=120, interval_secon
     start_time = time.time()
     poll_count = 0
     
-    logger.info(f"Starting authentication polling for Customer ID: {customer_id}")
+    log_ticket.info(f"Starting authentication polling for Customer ID: {customer_id}")
     
     while time.time() - start_time < timeout_seconds:
         poll_count += 1
         
         try:
-            logger.debug(f"Poll attempt #{poll_count} for Customer ID: {customer_id}")
+            log_ticket.info(f"DEBUGF :- Poll attempt #{poll_count} for Customer ID: {customer_id}")
 
             response = requests.post(
                 settings.PRODUCT_AUTH_URL,
@@ -223,11 +225,11 @@ def poll_license_authentication(customer_id, timeout_seconds=120, interval_secon
             data = response.json()
             auth_status = data.get('Authenticationstatus', '')
             
-            logger.debug(f"Poll #{poll_count} status: {auth_status}")
+            log_ticket.info(f"DEBUG :- Poll #{poll_count} status: {auth_status}")
             
             # Success case
             if auth_status == 'Approve':
-                logger.info(f"Authentication approved for Customer ID: {customer_id}")
+                log_ticket.info(f"Authentication approved for Customer ID: {customer_id}")
                 return {
                     'success': True,
                     'status': 'Approve',
@@ -236,7 +238,7 @@ def poll_license_authentication(customer_id, timeout_seconds=120, interval_secon
 
             # Expired license
             if 'expired' in auth_status.lower():
-                logger.warning(f"License expired for Customer ID: {customer_id}")
+                log_ticket.info(f"WARNING :- License expired for Customer ID: {customer_id}")
                 return {
                     'success': True,
                     'status': 'Expired',
@@ -245,7 +247,7 @@ def poll_license_authentication(customer_id, timeout_seconds=120, interval_secon
 
             # Blocked
             if auth_status == 'Block':
-                logger.warning(f"License blocked for Customer ID: {customer_id}")
+                log_ticket.info(f"WARNING :- License blocked for Customer ID: {customer_id}")
                 return {
                     'success': True,
                     'status': 'Block',
@@ -254,37 +256,37 @@ def poll_license_authentication(customer_id, timeout_seconds=120, interval_secon
 
             # Still waiting - continue polling
             if 'waiting' in auth_status.lower() or auth_status == 'Pending':
-                logger.debug(f"Still waiting for approval. Next poll in {interval_seconds}s")
+                log_ticket.info(f"DEBUG :- Still waiting for approval. Next poll in {interval_seconds}s")
                 time.sleep(interval_seconds)
                 continue
             
             # Unknown status - treat as error
-            logger.error(f"Unexpected authentication status: {auth_status}")
+            log_ticket.info(f"ERROR :- Unexpected authentication status: {auth_status}")
             return {
                 'success': False,
                 'error': f'Unexpected authentication status: {auth_status}'
             }
         
         except requests.exceptions.Timeout as e:
-            logger.error(f"Timeout during poll #{poll_count}: {str(e)}")
+            log_ticket.info(f"ERROR :- Timeout during poll #{poll_count}: {str(e)}")
             return {
                 'success': False,
                 'error': 'License server not responding. Please try again later.'
             }
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error during poll #{poll_count}: {str(e)}")
+            log_ticket.info(f"ERROR :- Connection error during poll #{poll_count}: {str(e)}")
             return {
                 'success': False,
                 'error': 'Cannot connect to license server. Check your network connection.'
             }
         except requests.exceptions.HTTPError as e:
-            logger.error(f"HTTP error during poll #{poll_count}: {str(e)}")
+            log_ticket.info(f"ERROR :- HTTP error during poll #{poll_count}: {str(e)}")
             return {
                 'success': False,
                 'error': f'License server error: {e.response.status_code}. Try again later.'
             }
         except Exception as e:
-            logger.exception(f"Unexpected error during poll #{poll_count}: {str(e)}")
+            log_ticket.info(f"ERROR :- Unexpected error during poll #{poll_count}: {str(e)}")
             return {
                 'success': False,
                 'error': 'Unexpected error during validation. Please try again.'
@@ -292,7 +294,7 @@ def poll_license_authentication(customer_id, timeout_seconds=120, interval_secon
     
     # Timeout
     elapsed = time.time() - start_time
-    logger.error(f"Validation timeout after {elapsed:.1f}s and {poll_count} polls")
+    log_ticket.info(f"ERROR :- Validation timeout after {elapsed:.1f}s and {poll_count} polls")
     return {
         'success': False,
         'error': f'Validation timeout - License not approved yet. Please try again later. ({poll_count} attempts over {int(elapsed)}s)'
@@ -384,16 +386,17 @@ def validate_company_license(request, pk):
     5. Start background thread
     6. Return immediately
     """
-    logger.info(f"License validation requested for company ID: {pk}")
+    # logger.info(f"License validation requested for company ID: {pk}")
+    log_ticket.info(f"License validation requested for company ID: {pk}")
 
     user = request.user
     
     with transaction.atomic():
         try:
             company = Company.objects.select_for_update().get(pk=pk)
-            logger.info(f"Found company: {company.company_name} (ID: {pk})")
+            log_ticket.info(f"Found company: {company.company_name} (ID: {pk})")
         except Company.DoesNotExist:
-            logger.error(f"Company not found with ID: {pk}")
+            log_ticket.info(f"ERROR :- Company not found with ID: {pk}")
             return Response(
                 {"message": "Company not found"},
                 status=status.HTTP_404_NOT_FOUND
@@ -401,7 +404,7 @@ def validate_company_license(request, pk):
 
         # Check if company is registered
         if not company.company_id:
-            logger.error(f"Company not registered yet. Cannot validate.")
+            log_ticket.info(f"ERROR :- Company not registered yet. Cannot validate.")
             return Response(
                 {
                     "message": "Company not registered with license server yet",
@@ -412,7 +415,7 @@ def validate_company_license(request, pk):
         
         # Check if already validating
         if company.authentication_status == Company.AuthStatus.VALIDATING:
-            logger.info(f"Company already validating: {company.company_name}")
+            log_ticket.info(f"Company already validating: {company.company_name}")
             return Response(
                 {
                     "message": "License validation already in progress",
@@ -424,17 +427,20 @@ def validate_company_license(request, pk):
         # Set status to Validating
         company.authentication_status = Company.AuthStatus.VALIDATING
         company.save()
-    logger.info(f"Set status to 'Validating' for company: {company.company_name}")
+        log_ticket.info(f"VALIDATION STATUS :- {company.authentication_status}")
+    log_ticket.info(f"Set status to 'Validating' for company: {company.company_name}")
     
     # Hand off to Celery — returns immediately, polling runs in the background.
     # Unlike a daemon thread, this survives worker restarts: the task is
     # re-queued from the broker if the worker dies mid-poll.
     from ...tasks import poll_company_license
     poll_company_license.delay(company.id)
-    logger.info(f"Queued poll_company_license task for company ID: {pk}")
+    log_ticket.info(f"Queued poll_company_license task for company ID: {pk}")
     
     # Return immediately
     serializer = CompanySerializer(company)
+    log_ticket.info(f"RESPONSE :- {serializer.data}")
+    log_ticket.info(f"VALIDATION STATUS :- {company.authentication_status}")
     return Response(
         {
             "message": "License validation started. This may take up to 2 minutes. Refresh to see updated status.",

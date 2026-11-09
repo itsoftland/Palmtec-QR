@@ -79,7 +79,7 @@ def get_etm_intial_data(request):
     except (ValueError, TypeError):
         pass
 
-    licenseUrl = os.environ.get('LICENSE_SERVER_BASE_URL') or 'http://202.88.237.210:8093/LicenceMgmt/public/api'
+    licenseUrl = os.environ.get('LICENSE_SERVER_BASE_URL') or 'http://licencemanagement.softlandindia.net/public/api'
     version    = os.environ.get('ETM_VERSION')
 
     data = {
