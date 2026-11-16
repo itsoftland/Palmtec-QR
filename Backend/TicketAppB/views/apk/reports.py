@@ -2,7 +2,7 @@ import datetime
 from collections import defaultdict
 from decimal import Decimal
 from rest_framework.response import Response
-from django.db.models import Q, Sum, Count, Max, F, Case, When, IntegerField
+from django.db.models import Q, Sum, Count, Max, F, Case, When, IntegerField, DecimalField
 from django.db.models.functions import Coalesce
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -236,9 +236,25 @@ def apk_dashboard(request):
             'upi': (r['refund_upi'] or 0) + (r['adjust_upi'] or 0),
         }
 
-    # Header totals follow the same rule (all buses, so bus_list sums match them).
-    total_revenue -= sum(d['total'] for d in deductions.values())
-    total_upi -= sum(d['upi'] for d in deductions.values())
+    # Header totals: all tickets taken on date_str by the company (same logic as the
+    # weekly chart). total = all tickets, upi = UPI tickets, cash = total - upi.
+    # Net revenue per ticket (same as the web dashboard): refunded -> -refund_amount,
+    # otherwise ticket_amount - adjust_amount.
+    _net_revenue = Case(
+        When(refund_status=1, then=-F('refund_amount')),
+        default=F('ticket_amount') - F('adjust_amount'),
+        output_field=DecimalField(max_digits=12, decimal_places=2),
+    )
+    day_agg = TransactionData.objects.filter(
+        company_code=company,
+        ticket_date=date_str,
+        **bus_filter,
+    ).aggregate(
+        total=Sum(_net_revenue),
+        upi=Sum(_net_revenue, filter=Q(ticket_status='UPI')),
+    )
+    total_revenue = day_agg['total'] or 0
+    total_upi = day_agg['upi'] or 0
 
     vehicle_qs = VehicleType.objects.filter(company=company, is_deleted=False)
     if is_basic:
@@ -270,96 +286,28 @@ def apk_dashboard(request):
             'upi_amt': str(upi_amt),
         })
 
-    # ── Weekly chart (Mon–Sun): closed from TripData + open from TransactionData ──
+    # ── Weekly chart (Mon–Sun): tickets taken per ticket_date by the company ──
+    # total = all tickets, upi = UPI tickets, cash = total - upi.
     week_start = anchor - datetime.timedelta(days=anchor.weekday())
     week_end = week_start + datetime.timedelta(days=6)
 
-    closed_weekly = {
-        str(r['start_date']): {'total': r['total'] or 0, 'upi': r['upi'] or 0}
-        for r in TripData.objects.filter(
-            company_code=company,
-            start_date__range=[week_start, week_end],
-            is_closed=True,
-            **bus_filter,
-        ).values('start_date').annotate(
-            total=Sum('total_collection'),
-            upi=Sum('upi_ticket_amount'),
-        )
-    }
+    weekly_rows = TransactionData.objects.filter(
+        company_code=company,
+        ticket_date__range=[week_start, week_end],
+        **bus_filter,
+    ).values('ticket_date').annotate(
+        total=Sum(_net_revenue),
+        upi=Sum(_net_revenue, filter=Q(ticket_status='UPI')),
+    ).order_by('ticket_date')
 
-    # Current: keyed on ticket_date
-    # open_weekly = {
-    #     str(r['ticket_date']): {'total': r['total'] or 0, 'upi': r['upi'] or 0}
-    #     for r in TransactionData.objects.filter(
-    #         company_code=company,
-    #         ticket_date__range=[week_start, week_end],
-    #         trip_id__is_closed=False,
-    #     ).values('ticket_date').annotate(
-    #         total=Sum('ticket_amount'),
-    #         upi=Sum('ticket_amount', filter=Q(ticket_status='UPI')),
-    #     )
-    # }
-
-    # Alternate: keyed on the schedule's own start_date
-    open_weekly = {
-        str(r['schedule_id__start_date']): {'total': r['total'] or 0, 'upi': r['upi'] or 0}
-        for r in TransactionData.objects.filter(
-            company_code=company,
-            schedule_id__start_date__range=[week_start, week_end],
-            trip_id__is_closed=False,
-            **bus_filter,
-        ).values('schedule_id__start_date').annotate(
-            total=Sum('ticket_amount', filter=~Q(refund_status=1)),
-            upi=Sum('ticket_amount', filter=Q(ticket_status='UPI') & ~Q(refund_status=1)),
-        )
-    }
-
-    # Per-day deductions: refund_amount (refund tickets) + adjust_amount (other tickets).
-    # Closed trips keyed by trip start_date, open trips by schedule start_date.
-    def _add_deductions(rows, date_key):
-        for r in rows:
-            d = str(r[date_key])
-            tgt = weekly_deduct.setdefault(d, {'total': 0, 'upi': 0})
-            tgt['total'] += (r['refund'] or 0) + (r['adjust'] or 0)
-            tgt['upi'] += (r['refund_upi'] or 0) + (r['adjust_upi'] or 0)
-
-    weekly_deduct = {}
-    _ded_aggs = dict(
-        refund=Sum('refund_amount', filter=Q(refund_status=1)),
-        refund_upi=Sum('refund_amount', filter=Q(refund_status=1, ticket_status='UPI')),
-        adjust=Sum('adjust_amount', filter=~Q(refund_status=1)),
-        adjust_upi=Sum('adjust_amount', filter=~Q(refund_status=1) & Q(ticket_status='UPI')),
-    )
-    _add_deductions(
-        TransactionData.objects.filter(
-            company_code=company,
-            trip_id__is_closed=True,
-            trip_id__start_date__range=[week_start, week_end],
-            **bus_filter,
-        ).values('trip_id__start_date').annotate(**_ded_aggs),
-        'trip_id__start_date',
-    )
-    _add_deductions(
-        TransactionData.objects.filter(
-            company_code=company,
-            trip_id__is_closed=False,
-            schedule_id__start_date__range=[week_start, week_end],
-            **bus_filter,
-        ).values('schedule_id__start_date').annotate(**_ded_aggs),
-        'schedule_id__start_date',
-    )
-
-    all_week_dates = sorted(set(closed_weekly.keys()) | set(open_weekly.keys()) | set(weekly_deduct.keys()))
     weekly_chart = []
-    for date in all_week_dates:
-        rev = (closed_weekly.get(date, {}).get('total', 0)) + (open_weekly.get(date, {}).get('total', 0))
-        upi = (closed_weekly.get(date, {}).get('upi', 0)) + (open_weekly.get(date, {}).get('upi', 0))
-        rev -= weekly_deduct.get(date, {}).get('total', 0)
-        upi -= weekly_deduct.get(date, {}).get('upi', 0)
+    for r in weekly_rows:
+        total = r['total'] or 0
+        upi = r['upi'] or 0
         weekly_chart.append({
-            'date': date,
-            'total': str(rev),
-            'cash': str(rev - upi),
+            'date': str(r['ticket_date']),
+            'total': str(total),
+            'cash': str(total - upi),
             'upi': str(upi),
         })
 
