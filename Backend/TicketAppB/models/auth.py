@@ -68,6 +68,17 @@ class CustomUser(AbstractUser):
         db_index=True,
     )
 
+    # ── Username: unique per company, not globally ────────────────────────────
+    # Overrides AbstractUser.username (which is globally unique). Uniqueness for
+    # company users is enforced by the (company, username) constraint below and
+    # by app-level checks for users with no company.
+    username = models.CharField(
+        max_length=150,
+        unique=False,
+        db_index=True,
+        validators=[AbstractUser.username_validator],
+    )
+
     # ── Email (required, unique — used for self-service password reset) ───────
     # AbstractUser has the email field; we override it to enforce uniqueness.
     # IMPORTANT: inform users on creation that this email must be valid and
@@ -152,6 +163,9 @@ class CustomUser(AbstractUser):
 
     class Meta:
         db_table = 'custom_user'
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'username'], name='uniq_company_username'),
+        ]
         indexes = [
             models.Index(fields=['role', 'is_active']),
             models.Index(fields=['company', 'is_active']),

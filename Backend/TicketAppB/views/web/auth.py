@@ -131,6 +131,32 @@ def _clear_session_cookie(response) -> None:
 
 # ── Login ─────────────────────────────────────────────────────────────────────
 
+
+def _authenticate_by_username(username, password, company_code=None):
+    """
+    Username is unique per company, so several users may share one. Return the
+    active user whose password matches (narrowed by company_code when given),
+    or None. If more than one user matches, return None (ambiguous).
+    """
+    candidates = User.objects.filter(username=username)
+    if company_code:
+        candidates = candidates.filter(company__company_id=company_code)
+    matches = []
+    for cand in candidates:
+        if cand.check_password(password):
+            matches.append(cand)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _inactive_match(username, company_code=None):
+    qs = User.objects.filter(username=username)
+    if company_code:
+        qs = qs.filter(company__company_id=company_code)
+    return qs.filter(is_active=False).exists() and not qs.filter(is_active=True).exists()
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -159,18 +185,14 @@ def login_view(request):
     force_login = bool(request.data.get('force_login', False))
 
     # ── 1+2: Credentials + is_active ─────────────────────────────────────────
-    user = authenticate(username=username, password=password)
+    user = _authenticate_by_username(username, password, request.data.get('company_code'))
 
     if not user:
-        try:
-            existing = User.objects.get(username=username)
-            if not existing.is_active:
-                return Response(
-                    {'error': 'Account is inactive. Contact administrator.'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        except User.DoesNotExist:
-            pass
+        if _inactive_match(username, request.data.get('company_code')):
+            return Response(
+                {'error': 'Account is inactive. Contact administrator.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         return Response(
             {'error': 'Invalid credentials.'},
             status=status.HTTP_401_UNAUTHORIZED,
@@ -657,18 +679,14 @@ def apk_login_view(request):
     force_login = bool(request.data.get('force_login', False))
 
     # ── 1+2: Credentials + is_active ─────────────────────────────────────────
-    user = authenticate(username=username, password=password)
+    user = _authenticate_by_username(username, password, request.data.get('company_code'))
 
     if not user:
-        try:
-            existing = User.objects.get(username=username)
-            if not existing.is_active:
-                return Response(
-                    {'error': 'Account is inactive. Contact administrator.'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        except User.DoesNotExist:
-            pass
+        if _inactive_match(username, request.data.get('company_code')):
+            return Response(
+                {'error': 'Account is inactive. Contact administrator.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         return Response(
             {'error': 'Invalid credentials.'},
             status=status.HTTP_401_UNAUTHORIZED,

@@ -90,6 +90,9 @@ DATABASES = {
 # custom user model
 AUTH_USER_MODEL = 'TicketAppB.CustomUser'
 
+# Username is unique per company (not globally); login resolves duplicates itself.
+SILENCED_SYSTEM_CHECKS = ['auth.E003', 'auth.W004']
+
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

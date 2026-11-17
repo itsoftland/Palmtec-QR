@@ -194,7 +194,12 @@ def create_user(request):
     else:
         return Response({'error': 'You do not have permission to create users.'}, status=status.HTTP_403_FORBIDDEN)
 
-    if User.objects.filter(username=username).exists():
+    # Company users: username unique only within the company. Others: global.
+    if role == UserRole.COMPANY_USER:
+        username_taken = User.objects.filter(username=username, company=company_instance).exists()
+    else:
+        username_taken = User.objects.filter(username=username).exists()
+    if username_taken:
         return Response({'error': 'Username already exists.'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(email=email).exists():
         return Response({'error': 'Email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -362,7 +367,13 @@ def update_user(request, user_id):
     if not new_username or not new_email:
         return Response({'error': 'username and email are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if User.objects.filter(username=new_username).exclude(pk=user_id).exists():
+    if target.company_id:
+        _uname_clash = User.objects.filter(
+            username=new_username, company_id=target.company_id,
+        ).exclude(pk=user_id).exists()
+    else:
+        _uname_clash = User.objects.filter(username=new_username).exclude(pk=user_id).exists()
+    if _uname_clash:
         return Response({'error': 'Username already taken.'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(email=new_email).exclude(pk=user_id).exists():
         return Response({'error': 'Email already registered to another user.'}, status=status.HTTP_400_BAD_REQUEST)
