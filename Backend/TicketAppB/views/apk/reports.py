@@ -329,7 +329,7 @@ def apk_dashboard(request):
     # )
     schedule_data = ScheduleData.objects.filter(
         company_code=company.id,
-        start_date__lte=date_str
+        start_date=date_str
     ).order_by("-start_date", "-id")
 
     all_vehicle = VehicleType.objects.filter(
@@ -349,7 +349,7 @@ def apk_dashboard(request):
         # Open vs closed schedule stats for this bus (up to date_str).
         open_schedules = bus_schedules.filter(close_unique_code__isnull=True)
         closed_schedules = bus_schedules.filter(
-            close_unique_code__isnull=False, end_date=date_str
+            close_unique_code__isnull=False
         )
         closed_agg = closed_schedules.aggregate(
             total=Sum('total_collection'),
@@ -374,9 +374,7 @@ def apk_dashboard(request):
             # same source as the header totals, so bus_list sums match them.
             # Schedule data only (open or closed on date_str). Mixing in trip rows
             # double counts: a closed schedule's collection is already in its trips.
-            day_agg = bus_schedules.filter(
-                Q(start_date=date_str) | Q(end_date=date_str)
-            ).aggregate(
+            day_agg = bus_schedules.aggregate(
                 total=Sum('total_collection'),
                 upi=Sum('upi_total_collection'),
             )
