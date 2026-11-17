@@ -398,7 +398,8 @@ def apk_dashboard(request):
                 "upi_amt": str(upi_amt),
                 "sch_start_date": str(latest_data.start_date),
                 "sch_start_time": str(latest_data.start_time) if latest_data.start_time else "",
-                "sch_end_date": str(latest_data.end_date)
+                "sch_end_date": str(latest_data.end_date),
+                "sch_end_time": str(latest_data.end_time) if latest_data.end_time else "",
             }
 
         else:
@@ -410,7 +411,8 @@ def apk_dashboard(request):
                 "upi_amt": "0",
                 "sch_start_date": "",
                 "sch_start_time": "",
-                "sch_end_date": ""
+                "sch_end_date": "",
+                "sch_end_time": "",
             }
 
         bus_data.update(sched_stats)
