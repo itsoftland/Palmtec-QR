@@ -133,6 +133,12 @@ class EmployeeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Selected employee type does not belong to your company.")
         return value
 
+    def validate_employee_name(self, value):
+        value = (value or '').strip()
+        if len(value) > 10:
+            raise serializers.ValidationError('Employee name must be at most 10 characters.')
+        return value
+
     def validate_employee_code(self, value):
         value = (value or '').strip()
         company = self.context.get('company')

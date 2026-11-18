@@ -203,9 +203,10 @@ def apk_dashboard(request):
     # accrue to this date via continuing trips, but status doesn't follow it.
     running_buses = set()
     closed_today_buses = set()
+    # Open schedule (not closed) counts as running from its start_date onward.
     for r in ScheduleData.objects.filter(
+        Q(start_date=date_str) | Q(start_date__lt=date_str, is_closed=False),
         company_code=company,
-        start_date=date_str,
         bus_no__isnull=False,
         **bus_filter,
     ).values('bus_no', 'is_closed'):
@@ -332,6 +333,13 @@ def apk_dashboard(request):
         start_date=date_str
     ).order_by("-start_date", "-id")
 
+    # Open schedules started before date_str: still running, status only.
+    carried_open = ScheduleData.objects.filter(
+        company_code=company.id,
+        start_date__lt=date_str,
+        close_unique_code__isnull=True,
+    ).order_by("-start_date", "-id")
+
     all_vehicle = VehicleType.objects.filter(
         company=company.id
     )
@@ -398,6 +406,20 @@ def apk_dashboard(request):
                 "sch_start_time": str(latest_data.start_time) if latest_data.start_time else "",
                 "sch_end_date": str(latest_data.end_date),
                 "sch_end_time": str(latest_data.end_time) if latest_data.end_time else "",
+            }
+
+        elif carried_open.filter(bus_no=bus_no).exists():
+            carried = carried_open.filter(bus_no=bus_no).first()
+            bus_data = {
+                "bus_no": carried.bus_no,
+                "status": "Running",
+                "revenue": "0",
+                "cash_amt": "0",
+                "upi_amt": "0",
+                "sch_start_date": str(carried.start_date),
+                "sch_start_time": str(carried.start_time) if carried.start_time else "",
+                "sch_end_date": str(carried.end_date),
+                "sch_end_time": str(carried.end_time) if carried.end_time else "",
             }
 
         else:
