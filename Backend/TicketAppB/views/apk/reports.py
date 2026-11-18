@@ -390,9 +390,10 @@ def apk_dashboard(request):
             cash_amt = revenue - (day_agg['upi'] or Decimal('0'))
             upi_amt = revenue - cash_amt
 
+            # Any open schedule for this bus => Running (not just the latest one).
             status = (
                 "Running"
-                if latest_data.close_unique_code is None
+                if sched_stats["open_schedule_count"] > 0
                 else "Not Running"
             )
 
