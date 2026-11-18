@@ -693,7 +693,7 @@ export default function EmployeeCombined() {
                     readOnly={isReadOnly}
                     placeholder="e.g., EMP001"
                     minLength={3}
-                    maxLength={20}
+                    maxLength={7}
                     required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
@@ -708,7 +708,7 @@ export default function EmployeeCombined() {
                     readOnly={isReadOnly}
                     placeholder="e.g., John Doe"
                     minLength={3}
-                    maxLength={20}
+                    maxLength={10}
                     required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
