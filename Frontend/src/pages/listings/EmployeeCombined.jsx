@@ -708,7 +708,7 @@ export default function EmployeeCombined() {
                     readOnly={isReadOnly}
                     placeholder="e.g., John Doe"
                     minLength={3}
-                    maxLength={10}
+                    maxLength={15}
                     required={!isReadOnly}
                     className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                   />
