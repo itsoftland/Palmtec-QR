@@ -573,7 +573,7 @@ export default function VehicleCombined() {
                                   <span className="font-mono text-slate-400 text-xs">#{item.id}</span>
                                 </td>
                                 <td className="px-5 py-3.5">
-                                  <span className="font-bold text-slate-800 tracking-wide uppercase">{item.bus_reg_num}</span>
+                                  <span className="font-bold text-slate-800 tracking-wide">{item.bus_reg_num}</span>
                                 </td>
                                 <td className="px-5 py-3.5">
                                   {item.bus_type_name
