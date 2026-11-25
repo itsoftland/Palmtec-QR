@@ -878,7 +878,7 @@ export default function VehicleCombined() {
                   minLength={5}
                   maxLength={18}
                   required={!isReadOnly}
-                  className={`uppercase ${isReadOnly ? 'bg-slate-50 text-slate-600' : ''}`}
+                  className={isReadOnly ? 'bg-slate-50 text-slate-600' : ''}
                 />
               </div>
               <div className="space-y-1.5">
